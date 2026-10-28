@@ -2,3 +2,6 @@ node_modules/
 dist/
 .env
 *.env
+target/
+.env.*
+*.log
