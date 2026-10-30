@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
+const configuredApiUrl = import.meta.env.VITE_API_URL?.replace(/\/+$/, '');
+const API_BASE_URL = configuredApiUrl ? `${configuredApiUrl}/api` : '/api';
 
 class ApiService {
   constructor() {
