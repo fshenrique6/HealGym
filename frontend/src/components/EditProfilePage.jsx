@@ -1,7 +1,23 @@
-import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
+import styled, { css } from 'styled-components';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
+import { FiUserX, FiX } from 'react-icons/fi';
+import {
+  Bloco,
+  Cabecalho,
+  cascaDialogo,
+  Corpo,
+  Fechar,
+  Identidade,
+  IdentidadeTexto,
+  Marca,
+  Overlay,
+  Rotulo,
+  Subtitulo,
+  Texto,
+  Titulo,
+} from './modalPainelEstilos';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { isStrongPassword, validateEmail } from '../utils/authValidation';
@@ -33,6 +49,14 @@ const EditProfilePage = () => {
   const deleteMessageRef = useRef(null);
   const submitMessageRef = useRef(null);
   const emailInputRef = useRef(null);
+  const deleteButtonRef = useRef(null);
+  const deleteDialogRef = useRef(null);
+  const deleteCloseRef = useRef(null);
+  const deletingRef = useRef(false);
+  const deleteTitleId = useId();
+  const deleteTextId = useId();
+  const reduzirMovimento = useReducedMotion();
+  deletingRef.current = isDeleting;
 
   useEffect(() => {
     if (user) {
@@ -176,7 +200,13 @@ const EditProfilePage = () => {
     }
   };
 
+  const fecharExclusao = () => {
+    setShowDeleteConfirmation(false);
+  };
+
   const handleDeleteAccount = async () => {
+    if (deletingRef.current) return;
+    deletingRef.current = true;
     setIsDeleting(true);
     setDeleteMessage('');
 
@@ -214,9 +244,46 @@ const EditProfilePage = () => {
         }
       }, 300);
     } finally {
+      deletingRef.current = false;
       setIsDeleting(false);
     }
   };
+
+  useEffect(() => {
+    if (!showDeleteConfirmation) return undefined;
+
+    deleteCloseRef.current?.focus();
+
+    const aoTeclar = (evento) => {
+      if (evento.key === 'Escape') {
+        evento.preventDefault();
+        setShowDeleteConfirmation(false);
+        return;
+      }
+      if (evento.key !== 'Tab' || !deleteDialogRef.current) return;
+
+      const focaveis = Array.from(
+        deleteDialogRef.current.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'),
+      ).filter((elemento) => !elemento.disabled);
+      if (focaveis.length === 0) return;
+
+      const primeiro = focaveis[0];
+      const ultimo = focaveis[focaveis.length - 1];
+      if (evento.shiftKey && document.activeElement === primeiro) {
+        evento.preventDefault();
+        ultimo.focus();
+      } else if (!evento.shiftKey && document.activeElement === ultimo) {
+        evento.preventDefault();
+        primeiro.focus();
+      }
+    };
+
+    document.addEventListener('keydown', aoTeclar);
+    return () => {
+      document.removeEventListener('keydown', aoTeclar);
+      deleteButtonRef.current?.focus();
+    };
+  }, [showDeleteConfirmation]);
 
   useEffect(() => {
     if (emailStep !== 'edit') return;
@@ -457,10 +524,30 @@ const EditProfilePage = () => {
               </AnimatePresence>
             </InputGroup>
 
-            <AccountEmail>
+            <AccountEmail $editing={emailStep === 'edit'} $error={emailStep === 'edit' && Boolean(emailError)}>
               <AccountEmailInfo>
                 E-mail atual
-                <AccountEmailValue>{user?.email}</AccountEmailValue>
+                {emailStep === 'edit' ? (
+                  <AccountEmailField
+                    ref={emailInputRef}
+                    type="email"
+                    value={newEmail}
+                    onChange={(event) => {
+                      setNewEmail(event.target.value);
+                      setEmailError('');
+                      setEmailMessage('');
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        requestEmailChange();
+                      }
+                    }}
+                    aria-label="Novo e-mail"
+                  />
+                ) : (
+                  <AccountEmailValue>{user?.email}</AccountEmailValue>
+                )}
               </AccountEmailInfo>
               {emailStep === 'idle' && (
                 <AccountEmailActions>
@@ -473,6 +560,18 @@ const EditProfilePage = () => {
                 </AccountEmailActions>
               )}
             </AccountEmail>
+            <AnimatePresence>
+              {emailStep === 'edit' && emailError && (
+                <ErrorMessage
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {emailError}
+                </ErrorMessage>
+              )}
+            </AnimatePresence>
 
             <AnimatePresence mode="wait" initial={false}>
               {emailStep === 'idle' ? null : emailStep === 'support' ? (
@@ -563,39 +662,6 @@ const EditProfilePage = () => {
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
               >
-                <InputGroup>
-                  <Input
-                    ref={emailInputRef}
-                    type="email"
-                    placeholder="Novo e-mail"
-                    value={newEmail}
-                    onChange={(event) => {
-                      setNewEmail(event.target.value);
-                      setEmailError('');
-                      setEmailMessage('');
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        event.preventDefault();
-                        requestEmailChange();
-                      }
-                    }}
-                    error={Boolean(emailError)}
-                    aria-label="Novo e-mail"
-                  />
-                  <AnimatePresence>
-                    {emailError && (
-                      <ErrorMessage
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        {emailError}
-                      </ErrorMessage>
-                    )}
-                  </AnimatePresence>
-                </InputGroup>
                 <CancelButton
                   type="button"
                   disabled={emailBusy}
@@ -645,6 +711,7 @@ const EditProfilePage = () => {
             </ButtonGroup>
 
             <DeleteButton
+              ref={deleteButtonRef}
               type="button"
               onClick={() => setShowDeleteConfirmation(true)}
               disabled={isDeleting}
@@ -691,67 +758,81 @@ const EditProfilePage = () => {
 
       <AnimatePresence>
         {showDeleteConfirmation && (
-          <ModalOverlay
-            initial={{ opacity: 0 }}
+          <Overlay
+            initial={reduzirMovimento ? false : { opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            onClick={() => setShowDeleteConfirmation(false)}
+            transition={{ duration: reduzirMovimento ? 0 : 0.18 }}
+            onClick={fecharExclusao}
           >
-            <ModalContent
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ duration: 0.3 }}
+            <DialogoExclusao
+              ref={deleteDialogRef}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby={deleteTitleId}
+              aria-describedby={deleteTextId}
+              initial={reduzirMovimento ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduzirMovimento ? { opacity: 0 } : { opacity: 0, y: 8 }}
+              transition={{ duration: reduzirMovimento ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}
               onClick={(e) => e.stopPropagation()}
             >
-              <ModalHeader>
-                <ModalTitle>Confirmar Exclusão de Conta</ModalTitle>
-              </ModalHeader>
+              <Cabecalho>
+                <Identidade>
+                  <Marca aria-hidden="true">
+                    <FiUserX />
+                  </Marca>
+                  <IdentidadeTexto>
+                    <Titulo id={deleteTitleId}>Excluir conta</Titulo>
+                    <Subtitulo id={deleteTextId}>
+                      Esta ação é permanente e não poderá ser desfeita.
+                    </Subtitulo>
+                  </IdentidadeTexto>
+                </Identidade>
+                <Fechar ref={deleteCloseRef} type="button" aria-label="Fechar" onClick={fecharExclusao}>
+                  <FiX />
+                </Fechar>
+              </Cabecalho>
 
-              <ModalBody>
-                <WarningText>
-                  <strong>Esta ação é IRREVERSÍVEL!</strong>
-                </WarningText>
-                <WarningText>Ao confirmar, você:</WarningText>
-                <WarningList>
-                  <li>
-                    <ItemIcon>🗑️</ItemIcon>
-                    <span>Perderá todos os seus dados permanentemente</span>
-                  </li>
-                  <li>
-                    <ItemIcon>🗑️</ItemIcon>
-                    <span>Não poderá recuperar sua conta</span>
-                  </li>
-                  <li>
-                    <ItemIcon>🗑️</ItemIcon>
-                    <span>Precisará criar uma nova conta para usar o HealGym novamente</span>
-                  </li>
-                  <li>
-                    <ItemIcon>📧</ItemIcon>
-                    <span>Receberá um email de confirmação final</span>
-                  </li>
-                </WarningList>
-                <ConfirmText>Tem certeza absoluta que deseja excluir sua conta?</ConfirmText>
-              </ModalBody>
-
-              <ModalFooter>
-                <ModalCancelButton
-                  type="button"
-                  onClick={() => setShowDeleteConfirmation(false)}
-                >
-                  Cancelar
-                </ModalCancelButton>
-                <ModalDeleteButton
-                  type="button"
-                  onClick={handleDeleteAccount}
-                  disabled={isDeleting}
-                >
-                  {isDeleting ? 'Enviando...' : '🗑️ Sim, Excluir Minha Conta'}
-                </ModalDeleteButton>
-              </ModalFooter>
-            </ModalContent>
-          </ModalOverlay>
+              <Corpo>
+                <Rotulo>O que acontece ao excluir sua conta?</Rotulo>
+                <Texto>
+                  Ao solicitar a exclusão, você receberá um e-mail com um link de confirmação.
+                  <br />
+                  Sua conta só será excluída após confirmar a solicitação.
+                </Texto>
+                <Bloco>
+                  <Rotulo>Dados e acesso</Rotulo>
+                  <Consequencias>
+                    <Texto>Perfil e dados pessoais.</Texto>
+                    <Texto>Acesso à conta atual.</Texto>
+                  </Consequencias>
+                </Bloco>
+                <Bloco>
+                  <Rotulo>Importante</Rotulo>
+                  <Texto>
+                    Após confirmar a exclusão pelo e-mail, a ação será permanente e não poderá ser desfeita.
+                  </Texto>
+                </Bloco>
+                {deleteMessage &&
+                  !deleteMessage.includes('enviado') &&
+                  !deleteMessage.includes('sucesso') && <MensagemErro role="alert">{deleteMessage}</MensagemErro>}
+                <Acoes>
+                  <BotaoCancelar type="button" onClick={fecharExclusao}>
+                    Cancelar
+                  </BotaoCancelar>
+                  <BotaoExcluir
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={isDeleting}
+                    aria-busy={isDeleting}
+                  >
+                    {isDeleting ? 'Enviando...' : 'Excluir conta'}
+                  </BotaoExcluir>
+                </Acoes>
+              </Corpo>
+            </DialogoExclusao>
+          </Overlay>
         )}
       </AnimatePresence>
     </Container>
@@ -906,12 +987,21 @@ const AccountEmail = styled.div`
   box-sizing: border-box;
   padding: 3px 12px;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(198, 169, 100, 0.2);
+  border: 1px solid
+    ${(props) =>
+      props.$error ? 'var(--error, #ff6b6b)' : props.$editing ? 'var(--accent)' : 'rgba(198, 169, 100, 0.2)'};
   border-radius: 2px;
+  box-shadow: ${(props) =>
+    props.$error
+      ? '0 0 10px rgba(255, 107, 107, 0.2)'
+      : props.$editing
+        ? '0 0 10px rgba(198, 169, 100, 0.2)'
+        : 'none'};
 `;
 
 const AccountEmailInfo = styled.div`
   min-width: 0;
+  flex: 1;
   color: var(--text-secondary);
   font-family: 'Cormorant', serif;
   font-size: 0.82rem;
@@ -935,6 +1025,21 @@ const AccountEmailValue = styled.span`
   font-size: 0.95rem;
   line-height: 1.25;
   letter-spacing: 0.5px;
+`;
+
+const AccountEmailField = styled.input`
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--white);
+  font-family: 'Cormorant', serif;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  letter-spacing: 0.5px;
+  outline: none;
 `;
 
 const EmailStepPanel = styled(motion.div)`
@@ -1284,226 +1389,64 @@ const DeleteButton = styled(motion.button)`
   }
 `;
 
-const ModalOverlay = styled(motion.div)`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.78);
+const DialogoExclusao = styled(motion.div)`
+  width: min(100%, 640px);
+  ${cascaDialogo}
+`;
+
+const Consequencias = styled.div`
   display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-  padding: 24px 18px;
+  flex-direction: column;
+  gap: 0.15rem;
 `;
 
-const ModalContent = styled(motion.div)`
-  background: linear-gradient(180deg, #161616 0%, #101010 100%);
-  border-radius: 5px;
-  width: min(100%, 560px);
-  border: 1px solid rgba(198, 169, 100, 0.28);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
-  padding: 28px 22px 22px;
+const MensagemErro = styled.p`
+  margin: 0.75rem 0 0;
+  color: #c45c5c;
+  font-family: 'Cormorant', serif;
+  font-style: normal;
+  font-size: 0.92rem;
+  line-height: 1.35;
 `;
 
-const ModalHeader = styled.div`
-  padding: 0;
-  margin-bottom: 10px;
+const Acoes = styled.div`
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.95rem;
+
+  @media (max-width: 420px) {
+    flex-direction: column;
+  }
 `;
 
-const ModalTitle = styled.h2`
-  color: #dc2626;
-  font-size: 1.35rem;
-  line-height: 1.2;
-  letter-spacing: 0.08em;
-  font-weight: 600;
-  margin: 0;
-  text-align: center;
+const botaoModal = css`
+  flex: 1;
+  min-height: 40px;
+  padding: 0.55rem 0.85rem;
+  border-radius: 8px;
   font-family: 'Cinzel', serif;
-  text-wrap: balance;
-`;
-
-const ModalBody = styled.div`
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-`;
-
-const WarningText = styled.p`
-  color: var(--text-secondary);
-  font-family: 'Cormorant', 'Marcellus', serif;
-  font-size: 1rem;
-  line-height: 1.3;
-  letter-spacing: 0.04em;
-  font-weight: 400;
-  margin: 0;
-  text-align: center;
-
-  strong {
-    color: #dc2626;
-    font-family: inherit;
-    font-weight: 600;
-  }
-`;
-
-const WarningList = styled.ul`
-  list-style: none;
-  color: var(--text-secondary);
-  font-family: 'Cormorant', 'Marcellus', serif;
-  font-size: 1rem;
-  line-height: 1.3;
-  letter-spacing: 0.04em;
-  margin: 2px 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-
-  li,
-  li span {
-    font-family: 'Cormorant', 'Marcellus', serif;
-    font-size: 1rem;
-    line-height: 1.3;
-    letter-spacing: 0.04em;
-    font-weight: 400;
-  }
-
-  li {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin: 0;
-  }
-`;
-
-const ItemIcon = styled.span`
-  flex: 0 0 auto;
-  width: 1.1rem;
-  line-height: 1.3;
-  text-align: center;
-`;
-
-const ConfirmText = styled.p`
-  color: var(--accent);
-  font-size: 1rem;
-  line-height: 1.3;
-  letter-spacing: 0.01em;
+  font-style: normal;
   font-weight: 600;
-  text-align: center;
-  margin: 4px 0 0;
-  font-family: 'Cormorant', 'Marcellus', serif;
-  white-space: nowrap;
-`;
-
-const ModalFooter = styled.div`
-  padding: 18px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`;
-
-const ModalCancelButton = styled.button`
-  box-sizing: border-box;
-  font-family: 'Poppins', sans-serif;
-  min-height: 48px;
-  padding: 14px 20px;
-  font-size: 0.9rem;
-  line-height: 1.2;
-  letter-spacing: 0.1em;
-  background: #121212;
-  color: var(--text-secondary);
-  border: 1px solid rgba(198, 169, 100, 0.35);
-  border-radius: 5px;
-  transition:
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    color 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
-  cursor: pointer;
-  text-transform: uppercase;
-  width: 100%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  &:hover {
-    color: var(--accent);
-    border-color: var(--accent);
-    background: #1a1814;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
-  }
-
-  &:active {
-    transform: translateY(-2px) scale(0.99);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 3px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-
-    &:hover,
-    &:active {
-      transform: none;
-    }
-  }
-`;
-
-const ModalDeleteButton = styled.button`
-  box-sizing: border-box;
-  font-family: 'Poppins', sans-serif;
-  min-height: 48px;
-  padding: 14px 20px;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   line-height: 1.2;
   letter-spacing: 0.08em;
-  background: linear-gradient(180deg, #c53838 0%, #9d1c1c 100%);
-  color: #fff;
-  border: none;
-  border-radius: 5px;
+  text-transform: none;
+  cursor: pointer;
   transition:
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 220ms cubic-bezier(0.22, 1, 0.36, 1);
   transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
-  cursor: pointer;
-  box-shadow: 0 8px 18px rgba(157, 28, 28, 0.28);
-  text-transform: uppercase;
-  width: 100%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-wrap: balance;
 
   &:hover:not(:disabled) {
-    filter: brightness(1.06);
     transform: translateY(-2px);
-    box-shadow: 0 10px 22px rgba(157, 28, 28, 0.38);
+    filter: brightness(1.06);
   }
 
   &:active:not(:disabled) {
     transform: translateY(-2px) scale(0.99);
-  }
-
-  &:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-
-  &:focus-visible {
-    outline: 2px solid #e07a7a;
-    outline-offset: 3px;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1513,6 +1456,45 @@ const ModalDeleteButton = styled.button`
     &:active:not(:disabled) {
       transform: none;
     }
+  }
+`;
+
+const BotaoCancelar = styled.button`
+  ${botaoModal}
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: var(--text-secondary);
+
+  &:hover {
+    color: var(--white);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+`;
+
+const BotaoExcluir = styled.button`
+  ${botaoModal}
+  border: 1px solid #8d3a3a;
+  background: #8d3a3a;
+  color: var(--white);
+
+  &:hover:not(:disabled) {
+    background: #9a4545;
+    border-color: #9a4545;
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #e7b1b1;
+    outline-offset: 2px;
   }
 `;
 
