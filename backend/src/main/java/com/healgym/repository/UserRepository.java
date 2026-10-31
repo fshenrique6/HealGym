@@ -64,6 +64,7 @@ public class UserRepository {
   }
 
   public void deleteById(ObjectId id) {
+    db.bodyMeasurements().deleteMany(Filters.eq("user", id));
     db.users().deleteOne(Filters.eq("_id", id));
   }
 }
