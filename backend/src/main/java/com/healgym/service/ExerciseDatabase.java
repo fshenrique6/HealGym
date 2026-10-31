@@ -181,17 +181,6 @@ public final class ExerciseDatabase {
             "banco",
             "halteres"),
         ex(
-            "medio-chest-press-na-maquina",
-            "Chest Press na Máquina",
-            "Manoplas na altura do meio do peito e costas apoiadas no encosto",
-            "supino_horizontal",
-            1,
-            true,
-            false,
-            2,
-            "maquina",
-            "maquina"),
-        ex(
             "superior-supino-inclinado-com-barra",
             "Supino Inclinado com Barra",
             "Banco entre 30° e 45°, descendo a barra até a parte alta do peito",

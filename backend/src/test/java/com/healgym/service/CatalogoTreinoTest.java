@@ -28,7 +28,6 @@ class CatalogoTreinoTest {
       Arrays.asList(
           "PEITO|medio-supino-reto-com-barra|Supino Reto com Barra",
           "PEITO|medio-supino-reto-com-halteres|Supino Reto com Halteres",
-          "PEITO|medio-chest-press-na-maquina|Chest Press na Máquina",
           "PEITO|superior-supino-inclinado-com-barra|Supino Inclinado com Barra",
           "PEITO|superior-supino-inclinado-com-halteres|Supino Inclinado com Halteres",
           "PEITO|inferior-supino-declinado-com-barra|Supino Declinado com Barra",
@@ -79,7 +78,7 @@ class CatalogoTreinoTest {
 
   @Test
   void catalogoTemOsExerciciosPrevistosENadaMais() {
-    assertTrue(CATALOGO.size() >= 40 && CATALOGO.size() <= 60, "fora da faixa útil: " + CATALOGO.size());
+    assertEquals(49, CATALOGO.size());
     assertEquals(CATALOGO.size(), ExerciseDatabase.todos().size());
     assertEquals(CATALOGO.size(), ExerciseDatabase.ativos().size());
     Set<String> ids = new LinkedHashSet<>();
@@ -112,6 +111,7 @@ class CatalogoTreinoTest {
     assertNull(ExerciseDatabase.porId("deltoide_posterior-face-pull-na-polia-alta"));
     assertNull(ExerciseDatabase.porId("posteriores-levantamento-terra-romeno"));
     assertNull(ExerciseDatabase.porId("lombar-levantamento-terra-romeno"));
+    assertNull(ExerciseDatabase.porId("medio-chest-press-na-maquina"));
   }
 
   @Test
@@ -287,6 +287,71 @@ class CatalogoTreinoTest {
   }
 
   @Test
+  void inicianteRecebeSupinoTradicionalSemChestPress() {
+    ExerciseDatabase.Exercise barra = ExerciseDatabase.porId("medio-supino-reto-com-barra");
+    ExerciseDatabase.Exercise halteres = ExerciseDatabase.porId("medio-supino-reto-com-halteres");
+    assertEquals(2, barra.dificuldade);
+    assertEquals(1, halteres.dificuldade);
+    assertTrue(barra.dificuldade < 3);
+    for (String id :
+        Arrays.asList(
+            "medio-supino-reto-com-barra",
+            "medio-supino-reto-com-halteres",
+            "superior-supino-inclinado-com-barra",
+            "superior-supino-inclinado-com-halteres",
+            "inferior-supino-declinado-com-barra",
+            "inferior-supino-declinado-com-halteres")) {
+      ExerciseDatabase.Exercise supino = ExerciseDatabase.porId(id);
+      assertNotNull(supino, id);
+      assertTrue(supino.ativo, id);
+      assertTrue(supino.composto, id);
+    }
+
+    for (String modo : Arrays.asList("hipertrofia", "forca", "resistencia")) {
+      for (int experiencia : Arrays.asList(1, 2, 3)) {
+        WorkoutGenerator.Session sessao =
+            WorkoutGenerator.montar("PEITO_TRICEPS", 60, experiencia, modo, 11);
+        assertTrue(sessao.problemas.isEmpty(), modo + " " + experiencia);
+        assertTrue(sessao.segundos <= 60 * 60, modo + " " + experiencia);
+        boolean supinoHorizontal = false;
+        for (Map<String, Object> item : sessao.exercicios) {
+          assertFalse(proibido(String.valueOf(item.get("nome"))));
+          assertFalse(proibido(String.valueOf(item.get("exercicioId"))));
+          if ("supino_horizontal".equals(item.get("padrao"))) {
+            supinoHorizontal = true;
+            String id = String.valueOf(item.get("exercicioId"));
+            assertTrue(
+                "medio-supino-reto-com-halteres".equals(id) || "medio-supino-reto-com-barra".equals(id),
+                modo + " " + experiencia + " " + id);
+          }
+          for (Map<String, Object> alternativa :
+              SessionPlanner.alternativas(item, sessao.exercicios, 60, experiencia, modo)) {
+            assertFalse(proibido(String.valueOf(alternativa.get("nome"))));
+            assertFalse(proibido(String.valueOf(alternativa.get("exercicioId"))));
+          }
+        }
+        assertTrue(supinoHorizontal, modo + " " + experiencia);
+      }
+    }
+
+    WorkoutGenerator.Session iniciante =
+        WorkoutGenerator.montar("PEITO_TRICEPS", 60, 1, "hipertrofia", 11);
+    Map<String, Object> principal = null;
+    for (Map<String, Object> item : iniciante.exercicios) {
+      if ("principal".equals(item.get("papel"))) {
+        principal = item;
+      }
+    }
+    assertNotNull(principal);
+    assertEquals("medio-supino-reto-com-halteres", principal.get("exercicioId"));
+    assertEquals("Supino Reto com Halteres", principal.get("nome"));
+    assertEquals(3, SessionPlanner.numero(principal.get("series")));
+    assertEquals("8-12", principal.get("repeticoes"));
+    assertEquals(90, principal.get("descansoSegundos"));
+    assertEquals("2-3", principal.get("rirAlvo"));
+  }
+
+  @Test
   void stiffEntraNoLugarDaDobradicaEOsNovosIdsExistem() {
     WorkoutGenerator.Session pernas =
         WorkoutGenerator.montar("PERNAS", 60, "intermediario", Collections.emptyList(), 4, 0);
@@ -338,7 +403,9 @@ class CatalogoTreinoTest {
     return normalizado.contains("face pull")
         || normalizado.contains("face-pull")
         || normalizado.contains("romeno")
-        || normalizado.contains("rdl");
+        || normalizado.contains("rdl")
+        || normalizado.contains("chest press")
+        || normalizado.contains("chest-press");
   }
 
   private static int teto(double tempo) {

@@ -233,7 +233,7 @@ public final class WorkoutGenerationCheck {
       check(ExerciseDatabase.porId(antigo) != null && ExerciseDatabase.porId(antigo).ativo, "id antigo perdido " + antigo);
     }
     Set<String> principais = new LinkedHashSet<>(Arrays.asList(
-        "Supino Reto com Barra", "Supino Reto com Halteres", "Chest Press na Máquina",
+        "Supino Reto com Barra", "Supino Reto com Halteres",
         "Supino Inclinado com Barra", "Supino Inclinado com Halteres",
         "Supino Declinado com Barra", "Supino Declinado com Halteres",
         "Crucifixo Reto com Halteres", "Cross Over na Polia Alta", "Voador Peitoral",

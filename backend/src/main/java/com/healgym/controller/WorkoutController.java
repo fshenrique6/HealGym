@@ -7,6 +7,7 @@ import com.healgym.security.AuthService;
 import com.healgym.service.CoberturaMuscular;
 import com.healgym.service.ExecucaoRegras;
 import com.healgym.service.ExerciseDatabase;
+import com.healgym.service.PrescricaoPerfil;
 import com.healgym.service.SessionPlanner;
 import com.healgym.service.WorkoutGenerator;
 import com.healgym.util.Js;
@@ -59,12 +60,8 @@ public class WorkoutController extends BaseController {
     return new ApiException(500, Json.obj("message", message, "error", cause.getMessage()));
   }
 
-  private static String nivel(User user) {
-    return user.getProfile() == null ? null : user.getProfile().fitnessLevel;
-  }
-
-  private static List<String> objetivos(User user) {
-    return user.getProfile() == null ? null : user.getProfile().goals;
+  private static PrescricaoPerfil.Configuracao prescricao(User user) {
+    return PrescricaoPerfil.interpretar(user == null ? null : user.getProfile());
   }
 
   private static int seed(User user) {
@@ -145,11 +142,12 @@ public class WorkoutController extends BaseController {
         variante = anteriores % 2;
       }
 
+      PrescricaoPerfil.Configuracao cfg = prescricao(user);
       WorkoutGenerator.Metadata metadata = WorkoutGenerator.gerarMetadados(grupamento, letraTreino);
-      String modo = WorkoutGenerator.modoObjetivo(objetivos(user));
+      String modo = cfg.modo;
       WorkoutGenerator.Session session =
           WorkoutGenerator.montar(
-              grupamento, tempoDisponivel, nivel(user), objetivos(user), seed(user), variante);
+              grupamento, tempoDisponivel, cfg.rank, modo, seed(user), variante);
       String titulo =
           "FULL_BODY".equals(grupamento)
               ? metadata.titulo + " — Sessão " + (variante + 1)
@@ -562,13 +560,14 @@ public class WorkoutController extends BaseController {
         throw message(404, "Exercício não encontrado neste treino");
       }
       completarPadrao(atual);
+      PrescricaoPerfil.Configuracao cfg = prescricao(user);
       List<Map<String, Object>> opcoes =
           SessionPlanner.alternativas(
               atual,
               itens,
               tempoDe(workout),
-              WorkoutGenerator.nivelRank(nivel(user)),
-              WorkoutGenerator.modoObjetivo(objetivos(user)));
+              cfg.rank,
+              cfg.modo);
       boolean executado =
           ExecucaoRegras.temSerieConcluida(execucoes.find(user.getId(), workout.getObjectId("_id")), uid);
       return ok(Json.obj("success", true, "data", opcoes, "temSeriesConcluidas", executado));
@@ -615,8 +614,9 @@ public class WorkoutController extends BaseController {
                 "requerConfirmacao",
                 true));
       }
-      int experiencia = WorkoutGenerator.nivelRank(nivel(user));
-      String modo = WorkoutGenerator.modoObjetivo(objetivos(user));
+      PrescricaoPerfil.Configuracao cfg = prescricao(user);
+      int experiencia = cfg.rank;
+      String modo = cfg.modo;
       double tempo = tempoDe(workout);
       Map<String, Object> escolhida = null;
       for (Map<String, Object> opcao : SessionPlanner.alternativas(atual, itens, tempo, experiencia, modo)) {
@@ -680,14 +680,15 @@ public class WorkoutController extends BaseController {
       if (!"ABC".equals(tipo) && !"ABCD".equals(tipo)) {
         throw message(400, "A visão do ciclo está disponível para treinos ABC e ABCD");
       }
+      PrescricaoPerfil.Configuracao cfg = prescricao(user);
       Map<String, Object> ciclo =
           WorkoutGenerator.ciclo(
               (String) tipo,
               workout.getString("letraTreino"),
               itens(workout),
               tempoDe(workout),
-              nivel(user),
-              objetivos(user),
+              cfg.rank,
+              cfg.modo,
               seed(user));
       return ok(Json.obj("success", true, "data", ciclo));
     } catch (ApiException e) {

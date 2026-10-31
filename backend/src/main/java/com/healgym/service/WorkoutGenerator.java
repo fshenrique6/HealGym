@@ -111,8 +111,21 @@ public final class WorkoutGenerator {
       List<String> objetivos,
       int seed,
       int variante) {
-    int experiencia = nivelRank(nivel);
-    String modo = modoObjetivo(objetivos);
+    return montar(grupamento, tempoMinutos, nivelRank(nivel), modoObjetivo(objetivos), seed, variante);
+  }
+
+  public static Session montar(
+      String grupamento, double tempoMinutos, int experiencia, String modo, int seed) {
+    return montar(grupamento, tempoMinutos, experiencia, modo, seed, 0);
+  }
+
+  public static Session montar(
+      String grupamento,
+      double tempoMinutos,
+      int experiencia,
+      String modo,
+      int seed,
+      int variante) {
     if (SessionPlanner.suporta(grupamento)) {
       SessionPlanner.Plano plano =
           SessionPlanner.planejar(grupamento, tempoMinutos, experiencia, modo, seed, variante);
@@ -319,6 +332,24 @@ public final class WorkoutGenerator {
       String nivel,
       List<String> objetivos,
       int seed) {
+    return ciclo(
+        tipoDivisao,
+        letraAtual,
+        itensAtuais,
+        tempo,
+        nivelRank(nivel),
+        modoObjetivo(objetivos),
+        seed);
+  }
+
+  public static Map<String, Object> ciclo(
+      String tipoDivisao,
+      String letraAtual,
+      List<Map<String, Object>> itensAtuais,
+      double tempo,
+      int experiencia,
+      String modo,
+      int seed) {
     Map<String, String> letras = letrasDaDivisao(tipoDivisao);
     if (letras.isEmpty()) {
       return null;
@@ -334,7 +365,7 @@ public final class WorkoutGenerator {
       List<Map<String, Object>> itens =
           entrada.getKey().equals(letraAtual) && itensAtuais != null
               ? itensAtuais
-              : montar(entrada.getValue(), tempo, nivel, objetivos, seed).exercicios;
+              : montar(entrada.getValue(), tempo, experiencia, modo, seed).exercicios;
       Map<String, Double> diretas = CoberturaMuscular.seriesDiretasPorMusculo(itens);
       Map<String, Object> porMusculo = new LinkedHashMap<>();
       for (String musculo : musculos) {

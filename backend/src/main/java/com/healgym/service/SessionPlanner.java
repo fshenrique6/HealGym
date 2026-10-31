@@ -409,7 +409,18 @@ public final class SessionPlanner {
       if (exercicio.composto && slot.obrigatorio && experiencia >= 2 && "barra".equals(tipo)) {
         nota += 1;
       }
-      if (exercicio.composto && experiencia <= 1 && ("maquina".equals(tipo) || "polia".equals(tipo))) {
+      // Supino não herda o bônus de máquina: o principal tradicional é halter ou barra,
+      // conforme a dificuldade já cadastrada. Barra com dificuldade 2 continua fora do rank 1.
+      if (exercicio.composto
+          && experiencia <= 1
+          && !slot.padrao.startsWith("supino")
+          && ("maquina".equals(tipo) || "polia".equals(tipo))) {
+        nota += 2;
+      }
+      if (exercicio.composto
+          && experiencia <= 1
+          && slot.padrao.startsWith("supino")
+          && ("halteres".equals(tipo) || "barra".equals(tipo))) {
         nota += 2;
       }
       if (exercicio.composto && (!slot.obrigatorio || !evitar.isEmpty()) && "maquina".equals(tipo)) {
@@ -506,12 +517,16 @@ public final class SessionPlanner {
       descanso = 45;
       rir = null;
     } else if (exercicio.composto) {
-      boolean forca = "forca".equals(modo) && experiencia >= 2;
-      if (forca && principal) {
+      if ("forca".equals(modo) && experiencia <= 1) {
+        // Força no rank 1: faixa moderada e RIR 2-3. Não usa 4-6 nem falha.
+        repeticoes = principal ? "6-10" : "8-10";
+        descanso = 120;
+        rir = "2-3";
+      } else if ("forca".equals(modo) && principal) {
         repeticoes = "4-6";
         descanso = 150;
         rir = "2-3";
-      } else if (forca) {
+      } else if ("forca".equals(modo)) {
         repeticoes = "6-8";
         descanso = 120;
         rir = "1-3";
