@@ -23,8 +23,11 @@ import {
   calculateBodyMassIndex,
 } from '../utils/healthCalculations';
 import { cronogramaSemanal } from '../utils/cronogramaSemanal';
+import { formatarData } from '../utils/medidasCorporais';
 import IndicadorAjuda from './IndicadorAjuda';
 import CalendarioTreinos from './CalendarioTreinos';
+import MedidasCorporais from './MedidasCorporais';
+import { LuRuler } from 'react-icons/lu';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -35,7 +38,10 @@ const Dashboard = () => {
   const [treinosDoDia, setTreinosDoDia] = useState([]);
   const [diaSelecionado, setDiaSelecionado] = useState(null);
   const [calendarioAberto, setCalendarioAberto] = useState(false);
+  const [medidasAberto, setMedidasAberto] = useState(false);
+  const [resumoMedidas, setResumoMedidas] = useState(null);
   const botaoCalendarioRef = useRef(null);
+  const botaoMedidasRef = useRef(null);
 
   const getIMCClassification = (imc) => {
     if (!imc) return null;
@@ -215,6 +221,21 @@ const Dashboard = () => {
         }}
       />
 
+      {user?.profile && (
+        <MedidasCorporais
+          aberto={medidasAberto}
+          altura={user.profile.height}
+          sexo={user.profile.gender}
+          imc={imc}
+          classificacaoImc={imcClass?.text}
+          onFechar={() => {
+            setMedidasAberto(false);
+            botaoMedidasRef.current?.blur();
+          }}
+          onResumo={setResumoMedidas}
+        />
+      )}
+
       <Container className="custom-scroll">
         <Header>
           <motion.div
@@ -361,6 +382,28 @@ const Dashboard = () => {
                       setEditingField={setEditingField}
                     />
                   </InfoGrid>
+                  <MedidasActionRow>
+                    <MedidasAction
+                      ref={botaoMedidasRef}
+                      type="button"
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      aria-haspopup="dialog"
+                      aria-expanded={medidasAberto}
+                      onClick={() => setMedidasAberto(true)}
+                    >
+                      <LuRuler aria-hidden="true" />
+                      Medidas corporais
+                    </MedidasAction>
+                    {resumoMedidas?.quantidade === 0 && (
+                      <MedidasChamada>Nenhuma medição ainda. Você pode adicionar a primeira.</MedidasChamada>
+                    )}
+                    {resumoMedidas?.quantidade > 0 && (
+                      <MedidasChamada>
+                        Última medição em {formatarData(resumoMedidas.ultimaData)}.
+                      </MedidasChamada>
+                    )}
+                  </MedidasActionRow>
                 </>
               ) : (
                 <EmptyState>
@@ -750,6 +793,58 @@ const InfoValue = styled.div`
   font-size: 0.95rem;
   line-height: 1.25;
   font-weight: 600;
+`;
+
+const MedidasActionRow = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.25rem;
+`;
+
+const MedidasAction = styled(motion.button)`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: transparent;
+  border: 1px solid rgba(198, 169, 100, 0.45);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 0.5rem 0.95rem;
+  font-family: 'Cormorant', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.03em;
+  text-transform: none;
+  cursor: pointer;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  &:hover {
+    background: rgba(198, 169, 100, 0.12);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+`;
+
+const MedidasChamada = styled.p`
+  margin: 0;
+  width: 110%;
+  color: var(--text-secondary);
+  font-family: 'Cormorant', serif;
+  font-size: 0.88rem;
+  line-height: 1.3;
+  text-align: center;
 `;
 
 const InfoValueRow = styled.div`

@@ -258,6 +258,30 @@ class ApiService {
       method: 'DELETE',
     });
   }
+
+  async getBodyMeasurements() {
+    return this.request('/body-measurements');
+  }
+
+  async createBodyMeasurement(dados) {
+    return this.request('/body-measurements', {
+      method: 'POST',
+      body: JSON.stringify(dados),
+    });
+  }
+
+  async updateBodyMeasurement(id, dados) {
+    return this.request(`/body-measurements/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(dados),
+    });
+  }
+
+  async deleteBodyMeasurement(id) {
+    return this.request(`/body-measurements/${id}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 export default new ApiService();
