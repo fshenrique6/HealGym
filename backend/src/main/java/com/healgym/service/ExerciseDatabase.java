@@ -1,22 +1,20 @@
 package com.healgym.service;
 
-import java.text.Normalizer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 public final class ExerciseDatabase {
 
   public static final class Exercise {
-    public String id;
+    public final String id;
     public final String nome;
     public final String tecnica;
     public final List<String> equipamento;
-    public String padrao;
+    public final String padrao;
     public String grupo;
     public final int dificuldade;
     public final boolean composto;
@@ -38,21 +36,31 @@ public final class ExerciseDatabase {
     public final String videoStatus;
     public boolean ativo = true;
 
-    Exercise(String nome, String tecnica, List<String> equipamento) {
+    Exercise(
+        String id,
+        String nome,
+        String tecnica,
+        List<String> equipamento,
+        String padrao,
+        int dificuldade,
+        boolean composto,
+        boolean unilateral,
+        int fundamento,
+        String tipoCarga,
+        String cuidado,
+        String erroComum) {
+      this.id = id;
       this.nome = nome;
       this.tecnica = tecnica;
-      this.equipamento = Collections.unmodifiableList(equipamento);
-      String base =
-          Normalizer.normalize(nome, Normalizer.Form.NFD)
-              .replaceAll("\\p{M}", "")
-              .toLowerCase(Locale.ROOT)
-              .replaceAll("[^a-z0-9]+", "-")
-              .replaceAll("^-|-$", "");
-      this.id = base;
-      this.dificuldade = inferDificuldade(nome);
-      this.composto = inferComposto(nome);
-      this.unilateral = inferUnilateral(nome);
-      this.fundamento = fundamentoDe(nome);
+      this.equipamento = Collections.unmodifiableList(new ArrayList<>(equipamento));
+      this.padrao = padrao;
+      this.dificuldade = dificuldade;
+      this.composto = composto;
+      this.unilateral = unilateral;
+      this.fundamento = fundamento;
+      this.tipoCarga = tipoCarga;
+      this.cuidado = cuidado;
+      this.erroComum = erroComum;
       this.videoUrl = null;
       this.videoThumbnailUrl = null;
       this.videoFonte = null;
@@ -85,587 +93,666 @@ public final class ExerciseDatabase {
     return lista;
   }
 
-  private static Exercise ex(String nome, String tecnica, String... equipamento) {
-    return new Exercise(nome, tecnica, new ArrayList<>(Arrays.asList(equipamento)));
+  private static Exercise ex(
+      String id,
+      String nome,
+      String tecnica,
+      String padrao,
+      int dificuldade,
+      boolean composto,
+      boolean unilateral,
+      int fundamento,
+      String tipoCarga,
+      String... equipamento) {
+    return new Exercise(
+        id,
+        nome,
+        tecnica,
+        Arrays.asList(equipamento),
+        padrao,
+        dificuldade,
+        composto,
+        unilateral,
+        fundamento,
+        tipoCarga,
+        null,
+        null);
   }
 
-  private static Map<String, List<Exercise>> group(Object... entries) {
-    Map<String, List<Exercise>> map = new LinkedHashMap<>();
-    for (int i = 0; i + 1 < entries.length; i += 2) {
-      @SuppressWarnings("unchecked")
-      List<Exercise> list = (List<Exercise>) entries[i + 1];
-      for (Exercise exercise : list) {
-        exercise.padrao = padraoDe((String) entries[i], exercise.nome);
-        exercise.id = entries[i] + "-" + exercise.id;
-        ExerciseAnatomy.aplicar(exercise);
+  private static Exercise texto(Exercise exercicio, String cuidado, String erro) {
+    exercicio.cuidado = cuidado;
+    exercicio.erroComum = erro;
+    return exercicio;
+  }
+
+  private static void registrar(String grupo, Exercise... exercicios) {
+    Map<String, List<Exercise>> porPadrao = new LinkedHashMap<>();
+    for (Exercise exercicio : exercicios) {
+      String carga = exercicio.tipoCarga;
+      String cuidado = exercicio.cuidado;
+      String erro = exercicio.erroComum;
+      exercicio.grupo = grupo;
+      exercicio.ativo = true;
+      ExerciseAnatomy.aplicar(exercicio);
+      exercicio.tipoCarga = carga;
+      if (cuidado != null) {
+        exercicio.cuidado = cuidado;
       }
-      map.put((String) entries[i], list);
-    }
-    return map;
-  }
-
-  private static void registrar(String grupo, Map<String, List<Exercise>> porcoes) {
-    for (List<Exercise> lista : porcoes.values()) {
-      for (Exercise exercise : lista) {
-        exercise.grupo = grupo;
-        POR_ID.putIfAbsent(exercise.id, exercise);
+      if (erro != null) {
+        exercicio.erroComum = erro;
       }
+      if (exercicio.principal == null || exercicio.padrao == null) {
+        throw new IllegalStateException("Metadado ausente em " + exercicio.id);
+      }
+      Exercise anterior = POR_ID.putIfAbsent(exercicio.id, exercicio);
+      if (anterior != null) {
+        throw new IllegalStateException("ID duplicado: " + exercicio.id);
+      }
+      porPadrao.computeIfAbsent(exercicio.padrao, chave -> new ArrayList<>()).add(exercicio);
     }
-    DATABASE.put(grupo, porcoes);
-  }
-
-  private static List<Exercise> list(Exercise... exercises) {
-    return new ArrayList<>(Arrays.asList(exercises));
-  }
-
-  private static int inferDificuldade(String nome) {
-    String n = nome.toLowerCase(Locale.ROOT);
-    if (n.contains("nórdica")
-        || n.contains("nordica")
-        || n.contains("sissy")
-        || n.contains("good morning")
-        || n.contains("arnold")
-        || n.contains("hack")
-        || n.contains("agachamento frontal")
-        || n.contains("barra fixa")
-        || n.contains("flexão de joelhos com o peso do corpo")) {
-      return 3;
-    }
-    if (n.contains("declinado")
-        || n.contains("frontal")
-        || n.contains("búlgaro")
-        || n.contains("bulgaro")
-        || n.contains("terra")
-        || n.contains("remada curvada")
-        || n.contains("cavalinho")
-        || n.contains("paralelas")
-        || n.contains("supino fechado")
-        || n.contains("desenvolvimento com barra")
-        || n.contains("agachamento com barra")) {
-      return 2;
-    }
-    return 1;
-  }
-
-  private static boolean inferComposto(String nome) {
-    String n = nome.toLowerCase(Locale.ROOT);
-    if (n.contains("flexão de joelhos")
-        || n.contains("flexao de joelhos")
-        || n.contains("braços estendidos")
-        || n.contains("remada y")
-        || n.contains("pallof")) {
-      return false;
-    }
-    return n.contains("supino")
-        || n.contains("chest press")
-        || n.contains("leg press")
-        || n.contains("agachamento")
-        || n.contains("desenvolvimento")
-        || n.contains("remada")
-        || n.contains("puxada")
-        || n.contains("pulldown")
-        || n.contains("barra fixa")
-        || n.contains("levantamento")
-        || n.contains("afundo")
-        || n.contains("hip thrust")
-        || n.contains("mergulho")
-        || n.contains("flexão")
-        || n.contains("flexao")
-        || n.contains("stiff")
-        || n.contains("good morning")
-        || n.contains("passada");
-  }
-
-  private static int fundamentoDe(String nome) {
-    switch (nome) {
-      case "Supino Reto com Barra":
-      case "Supino Reto com Halteres":
-      case "Supino Inclinado com Barra":
-      case "Supino Inclinado com Halteres":
-      case "Chest Press na Máquina":
-      case "Crucifixo Reto com Halteres":
-      case "Crucifixo Inclinado com Halteres":
-      case "Cross Over na Polia Alta":
-      case "Voador Peitoral":
-      case "Puxada Frontal Pegada Aberta":
-      case "Barra Fixa":
-      case "Remada Curvada com Barra":
-      case "Remada na Polia Baixa":
-      case "Remada Unilateral com Halter":
-      case "Remada Cavalinho com Barra":
-      case "Desenvolvimento com Barra":
-      case "Desenvolvimento com Halteres":
-      case "Desenvolvimento na Máquina":
-      case "Elevação Lateral com Halteres":
-      case "Elevação Lateral na Polia Baixa":
-      case "Crucifixo Inverso com Halteres":
-      case "Crucifixo Inverso Inclinado":
-      case "Face Pull na Polia Alta":
-      case "Voador Invertido":
-      case "Rosca Direta com Barra":
-      case "Rosca Alternada com Halteres":
-      case "Rosca Martelo com Halteres":
-      case "Rosca Scott com Barra":
-      case "Rosca Inclinada com Halteres":
-      case "Rosca na Polia Baixa":
-      case "Tríceps Pulley na Polia Alta":
-      case "Tríceps Corda na Polia Alta":
-      case "Extensão Overhead na Polia Baixa":
-      case "Tríceps Testa com Barra":
-      case "Tríceps Francês com Halteres":
-      case "Agachamento com Barra":
-      case "Agachamento Goblet com Halter":
-      case "Agachamento com Halteres":
-      case "Leg Press":
-      case "Afundo com Halteres":
-      case "Afundo Búlgaro com Halteres":
-      case "Cadeira Extensora":
-      case "Levantamento Terra Romeno":
-      case "Stiff com Halteres":
-      case "Mesa Flexora":
-      case "Cadeira Flexora":
-      case "Hip Thrust com Barra":
-      case "Panturrilha em Pé com Barra":
-      case "Panturrilha Sentado com Halteres":
-      case "Panturrilha em Máquina":
-      case "Prancha":
-      case "Dead Bug":
-      case "Abdominal Tradicional":
-      case "Elevação de Joelhos":
-      case "Prancha Lateral":
-      case "Pallof Press na Polia":
-        return 2;
-      case "Supino Declinado com Barra":
-      case "Supino Declinado com Halteres":
-      case "Mergulho nas Paralelas":
-      case "Supino Fechado com Barra":
-      case "Agachamento Frontal com Barra":
-      case "Pulldown Reto Braços Estendidos":
-      case "Pulldown com Pegada Supinada":
-      case "Panturrilha Sentado com Barra":
-        return 1;
-      default:
-        return 0;
-    }
-  }
-
-  private static boolean inferUnilateral(String nome) {
-    String n = nome.toLowerCase(Locale.ROOT);
-    return n.contains("unilateral")
-        || n.contains("alternad")
-        || n.contains("búlgaro")
-        || n.contains("bulgaro")
-        || n.contains("passada")
-        || n.contains("concentrada")
-        || n.contains("cruzada")
-        || n.contains("prancha lateral")
-        || n.contains("pallof");
-  }
-
-  private static String padraoDe(String porcao, String nome) {
-    String n = nome.toLowerCase(Locale.ROOT);
-    if (n.contains("prancha")
-        || n.contains("dead bug")
-        || n.contains("abdominal")
-        || n.contains("pallof")
-        || n.contains("elevação de joelhos")
-        || n.contains("elevacao de joelhos")) {
-      return "core";
-    }
-    if (n.contains("press pegada fechada")) {
-      return "supino_horizontal";
-    }
-    if (n.contains("voador invertido")) {
-      return "deltoide_posterior";
-    }
-    if (n.contains("voador")) {
-      return "aducao_horizontal";
-    }
-    if (n.contains("leg press")) {
-      return "agachamento";
-    }
-    if (n.contains("extensora")) {
-      return "extensao_joelho";
-    }
-    if (n.contains("flexora")
-        || n.contains("flexão de joelhos")
-        || n.contains("flexao de joelhos")) {
-      return "flexao_joelho";
-    }
-    if (n.contains("panturrilha")) {
-      return "panturrilha";
-    }
-    if (n.contains("face pull")
-        || n.contains("crucifixo inverso")
-        || n.contains("elevação lateral curvado")
-        || n.contains("elevacao lateral curvado")) {
-      return "deltoide_posterior";
-    }
-    if (n.contains("rotação") || n.contains("rotacao")) {
-      return "manguito";
-    }
-    if (n.contains("rosca martelo") || n.contains("rosca inversa")) {
-      return "rosca_neutra";
-    }
-    if (n.contains("rosca")) {
-      return "rosca";
-    }
-    if (n.contains("supino fechado")) {
-      return "supino_fechado";
-    }
-    if (n.contains("testa") || n.contains("francês") || n.contains("frances") || n.contains("overhead")) {
-      return "triceps_overhead";
-    }
-    if (n.contains("paralelas")) {
-      return "supino_declinado";
-    }
-    if (n.contains("tríceps") || n.contains("triceps") || n.contains("mergulho")) {
-      return "triceps_pushdown";
-    }
-    if (n.contains("elevação lateral") || n.contains("elevacao lateral")) {
-      return "elevacao_lateral";
-    }
-    if (n.contains("elevação frontal") || n.contains("elevacao frontal")) {
-      return "elevacao_frontal";
-    }
-    if (n.contains("desenvolvimento") || n.contains("arnold")) {
-      return "desenvolvimento";
-    }
-    if (n.contains("agachamento")
-        || n.contains("afundo")
-        || n.contains("passada")
-        || n.contains("sissy")) {
-      return "agachamento";
-    }
-    if (n.contains("terra")
-        || n.contains("stiff")
-        || n.contains("good morning")
-        || n.contains("nórdica")
-        || n.contains("nordica")) {
-      return "dobradica";
-    }
-    if (n.contains("hip thrust")
-        || n.contains("ponte")
-        || n.contains("elevação de quadril")
-        || n.contains("elevacao de quadril")) {
-      return "gluteo";
-    }
-    if (n.contains("abdução") || n.contains("abducao")) {
-      return "abducao";
-    }
-    if (n.contains("braços estendidos")) {
-      return "extensao_ombro";
-    }
-    if (n.contains("puxada") || n.contains("pulldown") || n.contains("barra fixa")) {
-      return "puxada_vertical";
-    }
-    if (n.contains("remada alta")) {
-      return "remada_alta";
-    }
-    if (n.contains("remada y")) {
-      return "elevacao_y";
-    }
-    if (n.contains("remada")) {
-      return "remada";
-    }
-    if (n.contains("crucifixo") || n.contains("cross over") || n.contains("abertura")) {
-      return "aducao_horizontal";
-    }
-    if (n.contains("pullover")) {
-      return "pullover";
-    }
-    if (n.contains("supino inclinado")) {
-      return "supino_inclinado";
-    }
-    if (n.contains("supino declinado")) {
-      return "supino_declinado";
-    }
-    if (n.contains("supino")
-        || n.contains("chest press")
-        || n.contains("flexão")
-        || n.contains("flexao")) {
-      return "supino_horizontal";
-    }
-    if (n.contains("extensão de tronco") || n.contains("extensao de tronco")) {
-      return "lombar";
-    }
-    return porcao;
+    DATABASE.put(grupo, porPadrao);
   }
 
   static {
     registrar(
         "PEITO",
-        group(
-            "superior",
-            list(
-                ex("Supino Inclinado com Barra", "Banco entre 30° e 45°, escápulas apoiadas, descer a barra com controle até a parte alta do peito", "banco", "barra"),
-                ex("Supino Inclinado com Halteres", "Banco entre 30° e 45°, descer os halteres ao lado da parte alta do peito e empurrar sem bater um no outro", "banco", "halteres"),
-                ex("Crucifixo Inclinado com Halteres", "Cotovelos levemente flexionados, abrir só até um alongamento confortável", "banco", "halteres")),
-            "medio",
-            list(
-                ex("Supino Reto com Barra", "Barra na linha do meio do peito, escápulas retraídas e pés firmes no chão", "banco", "barra"),
-                ex("Supino Reto com Halteres", "Descer os halteres ao lado do peito com os antebraços na vertical, na amplitude que conseguir controlar", "banco", "halteres"),
-                ex("Flexão com Pés Elevados", "Corpo alinhado, descer até quase tocar o chão", "banco"),
-                ex("Chest Press na Máquina", "Manoplas na altura do meio do peito, costas apoiadas, empurrar sem travar os cotovelos com força", "maquina")),
-            "inferior",
-            list(
-                ex("Supino Declinado com Barra", "Pés presos no apoio, descer a barra com controle até a parte baixa do peito", "banco", "barra"),
-                ex("Supino Declinado com Halteres", "Pés presos no apoio, descer os halteres ao lado da parte baixa do peito com controle", "banco", "halteres"),
-                ex("Mergulho entre Bancos", "Tronco inclinado à frente, descer controlado", "banco"),
-                ex("Mergulho nas Paralelas", "Tronco levemente inclinado à frente, descer só até onde os ombros permanecerem confortáveis", "paralelas")),
-            "interno",
-            list(
-                ex("Crucifixo Reto com Halteres", "Cotovelos levemente flexionados, abrir até um alongamento confortável e voltar sem bater os halteres", "banco", "halteres"),
-                ex("Cross Over na Polia Alta", "Tronco levemente inclinado, trazer as mãos de cima para baixo à frente do corpo", "polia_alta"),
-                ex("Press Pegada Fechada com Halteres", "Halteres juntos durante todo movimento", "banco", "halteres"),
-                ex("Voador Peitoral", "Cotovelos levemente flexionados, juntar os braços à frente do peito", "maquina")),
-            "externo",
-            list(
-                ex("Supino com Halteres Abertura Ampla", "Descer até a linha do peito, sem ultrapassar uma amplitude dolorosa", "banco", "halteres"),
-                ex("Abertura Inclinada com Halteres", "Cotovelos levemente flexionados, alongar só até a amplitude confortável", "banco", "halteres")),
-            "estiramento",
-            list(
-                ex("Pullover com Halter", "Braços quase retos, descer atrás da cabeça só até onde os ombros permitirem", "banco", "halteres"),
-                ex("Pullover Inclinado com Halter", "Banco a 30°, alongamento controlado", "banco", "halteres"))));
+        ex(
+            "medio-supino-reto-com-barra",
+            "Supino Reto com Barra",
+            "Barra na linha do meio do peito, escápulas apoiadas e pés firmes no chão",
+            "supino_horizontal",
+            2,
+            true,
+            false,
+            2,
+            "barra_total",
+            "banco",
+            "barra"),
+        ex(
+            "medio-supino-reto-com-halteres",
+            "Supino Reto com Halteres",
+            "Desça os halteres ao lado do peito, com os antebraços na vertical",
+            "supino_horizontal",
+            1,
+            true,
+            false,
+            2,
+            "por_halter",
+            "banco",
+            "halteres"),
+        ex(
+            "medio-chest-press-na-maquina",
+            "Chest Press na Máquina",
+            "Manoplas na altura do meio do peito e costas apoiadas no encosto",
+            "supino_horizontal",
+            1,
+            true,
+            false,
+            2,
+            "maquina",
+            "maquina"),
+        ex(
+            "superior-supino-inclinado-com-barra",
+            "Supino Inclinado com Barra",
+            "Banco entre 30° e 45°, descendo a barra até a parte alta do peito",
+            "supino_inclinado",
+            2,
+            true,
+            false,
+            2,
+            "barra_total",
+            "banco",
+            "barra"),
+        ex(
+            "superior-supino-inclinado-com-halteres",
+            "Supino Inclinado com Halteres",
+            "Banco entre 30° e 45°, descendo os halteres ao lado da parte alta do peito",
+            "supino_inclinado",
+            1,
+            true,
+            false,
+            2,
+            "por_halter",
+            "banco",
+            "halteres"),
+        ex(
+            "inferior-supino-declinado-com-barra",
+            "Supino Declinado com Barra",
+            "Pés presos no apoio, desça a barra com controle até a parte baixa do peito",
+            "supino_declinado",
+            2,
+            true,
+            false,
+            1,
+            "barra_total",
+            "banco",
+            "barra"),
+        ex(
+            "inferior-supino-declinado-com-halteres",
+            "Supino Declinado com Halteres",
+            "Pés presos no apoio, desça os halteres ao lado da parte baixa do peito",
+            "supino_declinado",
+            2,
+            true,
+            false,
+            1,
+            "por_halter",
+            "banco",
+            "halteres"),
+        ex(
+            "interno-crucifixo-reto-com-halteres",
+            "Crucifixo Reto com Halteres",
+            "Cotovelos levemente flexionados e fixos, abrindo só até um alongamento confortável",
+            "aducao_horizontal",
+            1,
+            false,
+            false,
+            2,
+            "por_halter",
+            "banco",
+            "halteres"),
+        ex(
+            "interno-cross-over-na-polia-alta",
+            "Cross Over na Polia Alta",
+            "Tronco levemente inclinado, trazendo as mãos de cima para baixo à frente do corpo",
+            "aducao_horizontal",
+            1,
+            false,
+            false,
+            2,
+            "polia",
+            "polia_alta"),
+        ex(
+            "interno-voador-peitoral",
+            "Voador Peitoral",
+            "Cotovelos levemente flexionados, juntando os braços à frente do peito",
+            "aducao_horizontal",
+            1,
+            false,
+            false,
+            2,
+            "maquina",
+            "maquina"));
 
     registrar(
         "COSTAS",
-        group(
-            "lats_largura",
-            list(
-                ex("Puxada Frontal Pegada Aberta", "Puxar até a parte alta do peito, levando os cotovelos para baixo", "polia_alta"),
-                ex("Remada Curvada Pegada Aberta", "Torso a 45°, puxar até abdômen", "barra"),
-                ex("Pulldown com Pegada Supinada", "Pegada supinada na largura dos ombros, puxar até a parte alta do peito", "polia_alta"),
-                ex("Barra Fixa", "Começar com os braços estendidos e subir até o queixo passar a barra, sem balanço", "barra")),
-            "lats_espessura",
-            list(
-                ex("Remada Curvada com Barra", "Tronco inclinado com a coluna neutra, puxar a barra para a linha do umbigo", "barra"),
-                ex("Remada Unilateral com Halter", "Joelho e mão no banco, puxar o halter em direção ao quadril", "banco", "halteres"),
-                ex("Remada Cavalinho com Barra", "Tronco inclinado com a coluna neutra, puxar a pegada em direção ao abdômen", "barra")),
-            "romboides",
-            list(
-                ex("Remada na Polia Baixa", "Puxar até o abdômen e aproximar as escápulas, sem jogar o tronco para trás", "polia_baixa"),
-                ex("Remada Invertida", "Corpo suspenso, puxar peito até a barra", "barra"),
-                ex("Remada Alta com Barra", "Puxar até a altura em que os ombros ficarem confortáveis", "barra")),
-            "trapezio_medio",
-            list(
-                ex("Remada Alta na Polia Baixa", "Puxar até a altura em que os ombros ficarem confortáveis", "polia_baixa"),
-                ex("Crucifixo Inverso com Halteres", "Tronco apoiado, abrir até a linha dos ombros sem arquear o pescoço", "banco", "halteres")),
-            "trapezio_inferior",
-            list(
-                ex("Pulldown Reto Braços Estendidos", "Braços quase estendidos, levar a barra até perto das coxas", "polia_alta"),
-                ex("Remada Y com Halteres", "Banco inclinado, braços em Y", "banco", "halteres")),
-            "deltoide_posterior",
-            list(
-                ex("Crucifixo Inverso Inclinado", "Tronco a 45°, abrir lateralmente", "banco", "halteres"),
-                ex("Face Pull na Polia Alta", "Puxar em direção ao rosto e girar os braços para fora no final, sem encolher os ombros", "polia_alta")),
-            "lombar",
-            list(
-                ex("Levantamento Terra Romeno", "Joelhos levemente flexionados, descer com a coluna neutra até a barra passar os joelhos", "barra"),
-                ex("Good Morning com Barra", "Barra nas costas, flexionar quadril mantendo costas retas", "barra"),
-                ex("Extensão de Tronco no Banco", "Flexionar o quadril com a coluna neutra e subir até alinhar o corpo", "banco"))));
+        ex(
+            "lats_largura-puxada-frontal-pegada-aberta",
+            "Puxada Frontal Pegada Aberta",
+            "Puxe a barra até a parte alta do peito, levando os cotovelos para baixo",
+            "puxada_vertical",
+            1,
+            true,
+            false,
+            2,
+            "polia",
+            "polia_alta"),
+        ex(
+            "lats_largura-pulldown-com-pegada-supinada",
+            "Pulldown com Pegada Supinada",
+            "Pegada supinada na largura dos ombros, puxando até a parte alta do peito",
+            "puxada_vertical",
+            1,
+            true,
+            false,
+            1,
+            "polia",
+            "polia_alta"),
+        ex(
+            "lats_largura-barra-fixa",
+            "Barra Fixa",
+            "Comece com os braços estendidos e suba até o queixo passar a barra, sem balanço",
+            "puxada_vertical",
+            3,
+            true,
+            false,
+            1,
+            "peso_corporal",
+            "barra_fixa"),
+        ex(
+            "lats_espessura-remada-curvada-com-barra",
+            "Remada Curvada com Barra",
+            "Tronco inclinado com a coluna neutra, puxando a barra até a linha do umbigo",
+            "remada",
+            2,
+            true,
+            false,
+            2,
+            "barra_total",
+            "barra"),
+        ex(
+            "lats_espessura-remada-unilateral-com-halter",
+            "Remada Unilateral com Halter",
+            "Joelho e mão no banco, puxando o halter em direção ao quadril",
+            "remada",
+            1,
+            true,
+            true,
+            2,
+            "por_halter",
+            "banco",
+            "halteres"),
+        ex(
+            "romboides-remada-na-polia-baixa",
+            "Remada na Polia Baixa",
+            "Puxe até o abdômen e aproxime as escápulas, sem jogar o tronco para trás",
+            "remada",
+            1,
+            true,
+            false,
+            2,
+            "polia",
+            "polia_baixa"));
 
     registrar(
         "OMBROS",
-        group(
-            "anterior",
-            list(
-                ex("Desenvolvimento com Barra", "Descer a barra até perto da clavícula e subir sem arquear a lombar", "banco", "barra"),
-                ex("Desenvolvimento com Halteres", "Descer os halteres até perto da altura dos ombros e empurrar acima da cabeça", "banco", "halteres"),
-                ex("Elevação Frontal com Barra", "Subir até a altura dos ombros, controlar a descida", "barra"),
-                ex("Elevação Frontal Alternada com Halteres", "Um braço por vez, evitar balanço", "halteres"),
-                ex("Desenvolvimento na Máquina", "Costas apoiadas, empurrar à frente da linha dos ombros sem arquear a lombar", "maquina")),
-            "lateral",
-            list(
-                ex("Elevação Lateral com Halteres", "Cotovelos levemente flexionados, subir até altura dos ombros", "halteres"),
-                ex("Elevação Lateral na Polia Baixa", "Puxar lateralmente com o tronco estável", "polia_baixa"),
-                ex("Desenvolvimento Arnold", "Girar as palmas durante a subida, com movimento controlado", "banco", "halteres")),
-            "posterior",
-            list(
-                ex("Crucifixo Inverso com Halteres", "Tronco inclinado, abrir até a linha dos ombros sem arquear o pescoço", "banco", "halteres"),
-                ex("Face Pull na Polia Alta", "Puxar a corda em direção ao rosto e girar os braços para fora no final, sem encolher os ombros", "polia_alta"),
-                ex("Elevação Lateral Curvado", "Tronco paralelo ao chão, elevar lateralmente", "halteres"),
-                ex("Voador Invertido", "Peito apoiado, abrir os braços até a linha dos ombros sem encolher o trapézio", "maquina")),
-            "manguito",
-            list(
-                ex("Rotação Externa na Polia Baixa", "Cotovelo colado ao corpo, rotação externa lenta", "polia_baixa"),
-                ex("Rotação L com Halteres", "Deitado de lado, rotação do antebraço", "banco", "halteres"))));
+        ex(
+            "anterior-desenvolvimento-com-barra",
+            "Desenvolvimento com Barra",
+            "Desça a barra até perto da clavícula e suba sem arquear a lombar",
+            "desenvolvimento",
+            2,
+            true,
+            false,
+            2,
+            "barra_total",
+            "banco",
+            "barra"),
+        ex(
+            "anterior-desenvolvimento-com-halteres",
+            "Desenvolvimento com Halteres",
+            "Desça os halteres até a altura dos ombros e empurre acima da cabeça",
+            "desenvolvimento",
+            1,
+            true,
+            false,
+            2,
+            "por_halter",
+            "banco",
+            "halteres"),
+        ex(
+            "anterior-desenvolvimento-na-maquina",
+            "Desenvolvimento na Máquina",
+            "Costas apoiadas, empurrando à frente da linha dos ombros sem arquear a lombar",
+            "desenvolvimento",
+            1,
+            true,
+            false,
+            2,
+            "maquina",
+            "maquina"),
+        ex(
+            "lateral-elevacao-lateral-com-halteres",
+            "Elevação Lateral com Halteres",
+            "Cotovelos levemente flexionados, subindo até a altura dos ombros",
+            "elevacao_lateral",
+            1,
+            false,
+            false,
+            2,
+            "por_halter",
+            "halteres"),
+        ex(
+            "anterior-elevacao-frontal-com-barra",
+            "Elevação Frontal com Barra",
+            "Suba a barra até a altura dos ombros e controle a descida",
+            "elevacao_frontal",
+            1,
+            false,
+            false,
+            1,
+            "barra_total",
+            "barra"),
+        ex(
+            "posterior-crucifixo-inverso-com-halteres",
+            "Crucifixo Inverso com Halteres",
+            "Tronco inclinado e coluna neutra, abrindo até a linha dos ombros",
+            "deltoide_posterior",
+            1,
+            false,
+            false,
+            2,
+            "por_halter",
+            "banco",
+            "halteres"),
+        ex(
+            "posterior-voador-invertido",
+            "Voador Invertido",
+            "Peito apoiado, abrindo os braços até a linha dos ombros",
+            "deltoide_posterior",
+            1,
+            false,
+            false,
+            2,
+            "maquina",
+            "maquina"));
 
     registrar(
         "TRICEPS",
-        group(
-            "longa",
-            list(
-                ex("Tríceps Testa com Barra", "Cotovelos apontados para o teto, descer a barra até perto da testa", "banco", "barra"),
-                ex("Tríceps Francês com Halteres", "Cotovelos apontados para cima, descer os halteres atrás da cabeça só até onde for confortável", "banco", "halteres"),
-                ex("Extensão Overhead na Polia Baixa", "Costas para polia, estender acima da cabeça", "polia_baixa")),
-            "medial",
-            list(
-                ex("Tríceps Pegada Invertida na Polia Alta", "Pegada supinada, cotovelos colados", "polia_alta"),
-                ex("Tríceps Kickback com Halteres", "Tronco inclinado e braço paralelo ao corpo, estender o cotovelo sem mover o ombro", "banco", "halteres")),
-            "lateral",
-            list(
-                ex("Tríceps Pulley na Polia Alta", "Cotovelos fixos, extensão completa", "polia_alta"),
-                ex("Tríceps Corda na Polia Alta", "Cotovelos junto ao tronco, estender e afastar as pontas da corda no final", "polia_alta"),
-                ex("Mergulho entre Bancos", "Tronco reto, descer até os cotovelos ficarem próximos de 90 graus", "banco"),
-                ex("Supino Fechado com Barra", "Mãos na largura dos ombros e cotovelos perto do tronco", "banco", "barra"))));
+        ex(
+            "lateral-triceps-pulley-na-polia-alta",
+            "Tríceps Pulley na Polia Alta",
+            "Cotovelos fixos ao lado do tronco e extensão completa, sem mover o ombro",
+            "triceps_pushdown",
+            1,
+            false,
+            false,
+            2,
+            "polia",
+            "polia_alta"),
+        ex(
+            "lateral-triceps-corda-na-polia-alta",
+            "Tríceps Corda na Polia Alta",
+            "Cotovelos junto ao tronco, estendendo e afastando as pontas da corda no final",
+            "triceps_pushdown",
+            1,
+            false,
+            false,
+            2,
+            "polia",
+            "polia_alta"),
+        ex(
+            "longa-triceps-testa-com-barra",
+            "Tríceps Testa com Barra",
+            "Cotovelos apontados para o teto, descendo a barra até perto da testa",
+            "triceps_overhead",
+            1,
+            false,
+            false,
+            2,
+            "barra_total",
+            "banco",
+            "barra"),
+        ex(
+            "longa-triceps-frances-com-halteres",
+            "Tríceps Francês com Halteres",
+            "Cotovelos apontados para cima, descendo os halteres atrás da cabeça só até onde for confortável",
+            "triceps_overhead",
+            1,
+            false,
+            false,
+            2,
+            "por_halter",
+            "banco",
+            "halteres"));
 
     registrar(
         "BICEPS",
-        group(
-            "longa",
-            list(
-                ex("Rosca Direta com Barra", "Pegada supinada, cotovelos fixos", "barra"),
-                ex("Rosca Inclinada com Halteres", "Costas apoiadas, descer até alongar o bíceps sem tirar os ombros do banco", "banco", "halteres"),
-                ex("Rosca na Polia Baixa", "Cotovelos fixos, manter a tensão em toda a amplitude", "polia_baixa")),
-            "curta",
-            list(
-                ex("Rosca Scott com Barra", "Braços apoiados, descer só até manter tensão sem estender o cotovelo por completo", "banco", "barra"),
-                ex("Rosca Concentrada com Halter", "Cotovelo apoiado na coxa interna", "banco", "halteres"),
-                ex("Rosca Alternada com Halteres", "Girar a palma para cima durante a subida, um braço por vez", "halteres")),
-            "braquial",
-            list(
-                ex("Rosca Martelo com Halteres", "Pegada neutra, movimento controlado", "halteres"),
-                ex("Rosca Inversa com Barra", "Pegada pronada, cotovelos ao lado do tronco", "barra")),
-            "braquiorradial",
-            list(
-                ex("Rosca Inversa na Polia Baixa", "Pegada pronada, antebraço ativo", "polia_baixa"),
-                ex("Rosca Martelo Cruzada", "Cruzar na frente do corpo", "halteres"))));
+        ex(
+            "longa-rosca-direta-com-barra",
+            "Rosca Direta com Barra",
+            "Pegada supinada e cotovelos ao lado do tronco, sem balançar o corpo",
+            "rosca",
+            1,
+            false,
+            false,
+            2,
+            "barra_total",
+            "barra"),
+        ex(
+            "curta-rosca-alternada-com-halteres",
+            "Rosca Alternada com Halteres",
+            "Um braço por vez, girando a palma para cima durante a subida",
+            "rosca",
+            1,
+            false,
+            true,
+            2,
+            "por_halter",
+            "halteres"),
+        ex(
+            "braquial-rosca-martelo-com-halteres",
+            "Rosca Martelo com Halteres",
+            "Pegada neutra, cotovelos ao lado do tronco e movimento controlado",
+            "rosca_neutra",
+            1,
+            false,
+            false,
+            2,
+            "por_halter",
+            "halteres"),
+        ex(
+            "curta-rosca-scott-com-barra",
+            "Rosca Scott com Barra",
+            "Braços apoiados, descendo só até manter tensão sem estender o cotovelo de uma vez",
+            "rosca",
+            1,
+            false,
+            false,
+            2,
+            "barra_total",
+            "banco",
+            "barra"),
+        texto(
+            ex(
+                "curta-rosca-concentrada-com-halter",
+                "Rosca Concentrada com Halter",
+                "Cotovelo apoiado na parte interna da coxa, subindo sem mover o ombro",
+                "rosca",
+                1,
+                false,
+                true,
+                1,
+                "halter_unico",
+                "banco",
+                "halteres"),
+            "Apoie o cotovelo na parte interna da coxa e flexione o cotovelo sem tirar o braço do apoio.",
+            "Levantar o cotovelo da coxa ou balançar o tronco para subir a carga."));
 
     registrar(
         "PERNAS",
-        group(
-            "quadriceps_completo",
-            list(
-                ex("Agachamento com Barra", "Descer até a profundidade que mantiver a coluna neutra, joelhos acompanhando os pés", "barra"),
-                ex("Agachamento Frontal com Barra", "Barra na frente, tronco ereto", "barra"),
-                ex("Afundo com Halteres", "Passo longo, descer até o joelho de trás se aproximar do chão", "halteres"),
-                ex("Leg Press", "Pés na plataforma, descer até os joelhos acompanharem a direção dos pés", "maquina"),
-                ex("Cadeira Extensora", "Estender os joelhos até alinhar a perna, sem impulso no final", "maquina")),
-            "vasto_medial",
-            list(
-                ex("Afundo Búlgaro com Halteres", "Pé traseiro elevado, descer até o joelho de trás se aproximar do chão", "banco", "halteres"),
-                ex("Agachamento Goblet com Halter", "Halter junto ao peito, descer até a profundidade confortável com o tronco estável", "halteres")),
-            "vasto_lateral",
-            list(
-                ex("Agachamento Sumô com Halter", "Pés bem afastados, halter entre pernas", "halteres"),
-                ex("Passada Lateral com Halteres", "Passo lateral, agachar no lado ativo", "halteres")),
-            "reto_femoral",
-            list(
-                ex("Agachamento com Halteres", "Halteres ao lado do corpo, descer até a coxa ficar próxima da paralela", "halteres"),
-                ex("Elevação de Quadril com Barra", "Costas no banco, barra no quadril", "banco", "barra")),
-            "posteriores",
-            list(
-                ex("Levantamento Terra Romeno", "Joelhos levemente flexionados, descer com a coluna neutra até a barra passar os joelhos", "barra"),
-                ex("Stiff com Halteres", "Joelhos levemente flexionados, descer até sentir os posteriores sem arredondar a coluna", "halteres"),
-                ex("Flexão de Joelhos com o Peso do Corpo", "Pés fixos, descer só a amplitude que conseguir controlar e voltar sem impulso", "banco"),
-                ex("Mesa Flexora", "Deitado, trazer o calcanhar sem erguer o quadril do banco", "maquina"),
-                ex("Cadeira Flexora", "Sentado, flexionar os joelhos com a lombar apoiada", "maquina")),
-            "gluteo_maximo",
-            list(
-                ex("Hip Thrust com Barra", "Costas no banco e barra apoiada no quadril, subir até alinhar o tronco sem arquear a lombar", "banco", "barra"),
-                ex("Agachamento Sumô com Barra", "Pés afastados, descer até a amplitude confortável sem arredondar a lombar", "barra"),
-                ex("Ponte de Glúteo Unilateral", "Uma perna por vez, contração no topo", "banco")),
-            "gluteo_medio",
-            list(
-                ex("Abdução na Polia Baixa", "Lateral para polia, abrir perna lateralmente", "polia_baixa"),
-                ex("Agachamento com Joelhos Estáveis", "Descer controlado e manter os joelhos acompanhando a direção dos pés", "halteres")),
-            "gastrocnemio",
-            list(
-                ex("Panturrilha em Pé com Barra", "Barra nas costas, subir na ponta dos pés", "barra"),
-                ex("Panturrilha em Máquina", "Ponta dos pés apoiada, subir sem quicar no final", "maquina"),
-                ex("Panturrilha no Banco", "Pé no banco, halter na mão, subir", "banco", "halteres")),
-            "soleo",
-            list(
-                ex("Panturrilha Sentado com Halteres", "Halteres nos joelhos, subir na ponta dos pés", "banco", "halteres"),
-                ex("Panturrilha Sentado com Barra", "Barra apoiada nos joelhos com proteção, subir e descer sem quicar", "banco", "barra"))));
+        ex(
+            "quadriceps_completo-agachamento-com-barra",
+            "Agachamento com Barra",
+            "Desça até a profundidade que mantiver a coluna neutra, com os joelhos na direção dos pés",
+            "agachamento",
+            2,
+            true,
+            false,
+            2,
+            "barra_total",
+            "barra"),
+        texto(
+            ex(
+                "quadriceps_completo-agachamento-no-smith",
+                "Agachamento no Smith",
+                "Pés um pouco à frente da barra, descendo com a coluna neutra",
+                "agachamento",
+                2,
+                true,
+                false,
+                2,
+                "maquina",
+                "maquina"),
+            "Posicione os pés um pouco à frente da barra e desça com os joelhos na direção dos pés, mantendo a coluna neutra.",
+            "Travar os joelhos com força no topo ou deixar os joelhos fecharem."),
+        ex(
+            "quadriceps_completo-leg-press",
+            "Leg Press",
+            "Pés na plataforma, descendo até os joelhos acompanharem a direção dos pés",
+            "agachamento",
+            1,
+            true,
+            false,
+            2,
+            "maquina",
+            "maquina"),
+        ex(
+            "vasto_medial-agachamento-goblet-com-halter",
+            "Agachamento Goblet com Halter",
+            "Halter junto ao peito, descendo com o tronco estável e os calcanhares no chão",
+            "agachamento",
+            1,
+            true,
+            false,
+            2,
+            "halter_unico",
+            "halteres"),
+        ex(
+            "quadriceps_completo-afundo-com-halteres",
+            "Afundo com Halteres",
+            "Passo longo, descendo até o joelho de trás se aproximar do chão",
+            "agachamento",
+            1,
+            true,
+            true,
+            2,
+            "por_halter",
+            "halteres"),
+        ex(
+            "vasto_medial-afundo-bulgaro-com-halteres",
+            "Afundo Búlgaro com Halteres",
+            "Pé traseiro elevado, descendo até o joelho de trás se aproximar do chão",
+            "agachamento",
+            2,
+            true,
+            true,
+            2,
+            "por_halter",
+            "banco",
+            "halteres"),
+        ex(
+            "quadriceps_completo-cadeira-extensora",
+            "Cadeira Extensora",
+            "Estenda os joelhos até alinhar a perna, sem impulso no final",
+            "extensao_joelho",
+            1,
+            false,
+            false,
+            2,
+            "maquina",
+            "maquina"),
+        ex(
+            "posteriores-stiff-com-halteres",
+            "Stiff com Halteres",
+            "Joelhos levemente flexionados, levando o quadril para trás com a coluna neutra",
+            "dobradica",
+            2,
+            true,
+            false,
+            2,
+            "por_halter",
+            "halteres"),
+        ex(
+            "posteriores-mesa-flexora",
+            "Mesa Flexora",
+            "Deitado, traga o calcanhar sem erguer o quadril do banco",
+            "flexao_joelho",
+            1,
+            false,
+            false,
+            2,
+            "maquina",
+            "maquina"),
+        ex(
+            "posteriores-cadeira-flexora",
+            "Cadeira Flexora",
+            "Sentado, flexione os joelhos com a lombar apoiada",
+            "flexao_joelho",
+            1,
+            false,
+            false,
+            2,
+            "maquina",
+            "maquina"),
+        ex(
+            "gluteo_maximo-hip-thrust-com-barra",
+            "Hip Thrust com Barra",
+            "Costas no banco e barra no quadril, subindo até alinhar o tronco sem arquear a lombar",
+            "gluteo",
+            2,
+            true,
+            false,
+            2,
+            "barra_total",
+            "banco",
+            "barra"),
+        texto(
+            ex(
+                "gluteo_maximo-coice-de-gluteo-na-polia",
+                "Coice de Glúteo na Polia",
+                "Tronco estável, levando o pé para trás até estender o quadril",
+                "gluteo",
+                1,
+                false,
+                true,
+                1,
+                "polia",
+                "polia_baixa"),
+            "Mantenha o tronco estável e leve o pé para trás até estender o quadril, sem arquear a lombar.",
+            "Girar o quadril ou impulsionar o movimento com a lombar."),
+        ex(
+            "gastrocnemio-panturrilha-em-maquina",
+            "Panturrilha em Máquina",
+            "Em pé, suba na ponta dos pés sem quicar no final",
+            "panturrilha",
+            1,
+            false,
+            false,
+            2,
+            "maquina",
+            "maquina"),
+        ex(
+            "soleo-panturrilha-sentado-com-halteres",
+            "Panturrilha Sentado com Halteres",
+            "Halteres apoiados nos joelhos, subindo na ponta dos pés",
+            "panturrilha",
+            1,
+            false,
+            false,
+            2,
+            "por_halter",
+            "banco",
+            "halteres"),
+        texto(
+            ex(
+                "gastrocnemio-panturrilha-no-leg-press",
+                "Panturrilha no Leg Press",
+                "Ponta dos pés na borda da plataforma, com os joelhos quase estendidos",
+                "panturrilha",
+                1,
+                false,
+                false,
+                2,
+                "maquina",
+                "maquina"),
+            "Apoie só a ponta dos pés na borda da plataforma, com os joelhos quase estendidos, e desça até alongar o tornozelo.",
+            "Travar os joelhos ou descer além do alongamento confortável do tornozelo."));
 
     registrar(
         "CORE",
-        group(
-            "estabilidade",
-            list(
-                ex(
-                    "Prancha",
-                    "Apoiar antebraços e pontas dos pés, manter quadril alinhado e respirar",
-                    "peso_corporal"),
-                ex(
-                    "Dead Bug",
-                    "Lombar apoiada no chão, estender braço e perna opostos sem arquear a coluna",
-                    "peso_corporal"),
-                ex(
-                    "Abdominal Tradicional",
-                    "Enrolar o tronco até tirar as escápulas do chão, sem puxar o pescoço",
-                    "peso_corporal"),
-                ex(
-                    "Elevação de Joelhos",
-                    "Levar os joelhos em direção ao tronco, sem balançar o corpo",
-                    "peso_corporal"),
-                ex(
-                    "Prancha Lateral",
-                    "Cotovelo sob o ombro e corpo alinhado, sem deixar o quadril cair",
-                    "peso_corporal"),
-                ex(
-                    "Pallof Press na Polia",
-                    "De lado para a polia, estender os braços à frente sem deixar o tronco girar",
-                    "polia_media"))));
-    ativarCatalogoPrincipal();
-  }
-
-  private static void ativarCatalogoPrincipal() {
-    List<String> principais =
-        Arrays.asList(
-            "PEITO|Supino Reto com Barra",
-            "PEITO|Supino Reto com Halteres",
-            "PEITO|Supino Inclinado com Barra",
-            "PEITO|Supino Inclinado com Halteres",
-            "PEITO|Supino Declinado com Barra",
-            "PEITO|Chest Press na Máquina",
-            "PEITO|Crucifixo Reto com Halteres",
-            "PEITO|Voador Peitoral",
-            "PEITO|Cross Over na Polia Alta",
-            "COSTAS|Puxada Frontal Pegada Aberta",
-            "COSTAS|Pulldown com Pegada Supinada",
-            "COSTAS|Barra Fixa",
-            "COSTAS|Remada Curvada com Barra",
-            "COSTAS|Remada Unilateral com Halter",
-            "COSTAS|Remada na Polia Baixa",
-            "COSTAS|Remada Cavalinho com Barra",
-            "OMBROS|Desenvolvimento com Barra",
-            "OMBROS|Desenvolvimento com Halteres",
-            "OMBROS|Desenvolvimento na Máquina",
-            "OMBROS|Elevação Lateral com Halteres",
-            "OMBROS|Crucifixo Inverso com Halteres",
-            "OMBROS|Voador Invertido",
-            "OMBROS|Face Pull na Polia Alta",
-            "TRICEPS|Tríceps Pulley na Polia Alta",
-            "TRICEPS|Tríceps Corda na Polia Alta",
-            "TRICEPS|Tríceps Testa com Barra",
-            "TRICEPS|Tríceps Francês com Halteres",
-            "TRICEPS|Mergulho entre Bancos",
-            "BICEPS|Rosca Direta com Barra",
-            "BICEPS|Rosca Alternada com Halteres",
-            "BICEPS|Rosca Martelo com Halteres",
-            "BICEPS|Rosca Scott com Barra",
-            "PERNAS|Agachamento com Barra",
-            "PERNAS|Leg Press",
-            "PERNAS|Cadeira Extensora",
-            "PERNAS|Mesa Flexora",
-            "PERNAS|Cadeira Flexora",
-            "PERNAS|Levantamento Terra Romeno",
-            "PERNAS|Afundo com Halteres",
-            "PERNAS|Afundo Búlgaro com Halteres",
-            "PERNAS|Hip Thrust com Barra",
-            "PERNAS|Panturrilha em Máquina",
-            "PERNAS|Panturrilha Sentado com Halteres",
-            "PERNAS|Agachamento Goblet com Halter",
-            "CORE|Prancha",
-            "CORE|Abdominal Tradicional",
-            "CORE|Elevação de Joelhos",
-            "CORE|Prancha Lateral",
-            "CORE|Dead Bug");
-    for (Exercise exercise : POR_ID.values()) {
-      exercise.ativo = principais.contains(exercise.grupo + "|" + exercise.nome);
-    }
+        ex(
+            "estabilidade-prancha",
+            "Prancha",
+            "Antebraços sob os ombros, quadril alinhado e respiração contínua",
+            "core",
+            1,
+            false,
+            false,
+            2,
+            "peso_corporal",
+            "peso_corporal"),
+        ex(
+            "estabilidade-abdominal-tradicional",
+            "Abdominal Tradicional",
+            "Enrole o tronco até tirar as escápulas do chão, sem puxar o pescoço",
+            "core",
+            1,
+            false,
+            false,
+            2,
+            "peso_corporal",
+            "peso_corporal"),
+        ex(
+            "estabilidade-elevacao-de-joelhos",
+            "Elevação de Joelhos",
+            "Leve os joelhos em direção ao tronco, sem balançar o corpo",
+            "core",
+            1,
+            false,
+            false,
+            2,
+            "peso_corporal",
+            "peso_corporal"));
   }
 }

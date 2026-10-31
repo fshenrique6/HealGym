@@ -469,6 +469,9 @@ public final class SessionPlanner {
         return "polia";
       }
     }
+    if (equipamento.contains("barra_fixa")) {
+      return "corpo";
+    }
     if (equipamento.contains("barra")) {
       return "barra";
     }
