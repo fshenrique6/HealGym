@@ -159,7 +159,6 @@ const ForgotPasswordPage = () => {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
             >
-              <SuccessIcon>✉️</SuccessIcon>
               <SuccessTitle>Código Enviado!</SuccessTitle>
               <SuccessMessage>
                 Enviamos um código de recuperação para <strong>{formData.email}</strong>
@@ -170,15 +169,15 @@ const ForgotPasswordPage = () => {
 
               <ActionButtons>
                 <BackButton
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => navigate('/login')}
                 >
                   Voltar ao Login
                 </BackButton>
                 <ResendButton
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => {
                     setIsSubmitted(false);
                     setFormData({ email: '' });
@@ -463,12 +462,9 @@ const SuccessContainer = styled(motion.div)`
   gap: 12px;
 `;
 
-const SuccessIcon = styled.div`
-  font-size: 2.5rem;
-  line-height: 1;
-`;
-
 const SuccessTitle = styled.h2`
+  font-family: 'Cinzel', serif;
+  font-style: normal;
   font-size: 2rem;
   line-height: 1.15;
   color: var(--white);
@@ -491,6 +487,7 @@ const SuccessMessage = styled.p`
   margin: 0;
   text-align: center;
   font-family: 'Cormorant', serif;
+  font-style: normal;
   letter-spacing: 0.04em;
   cursor: default;
   strong {
@@ -503,7 +500,7 @@ const SuccessSubtext = styled.p`
   line-height: 1.3;
   color: var(--text-secondary);
   font-family: 'Cormorant', serif;
-  font-style: italic;
+  font-style: normal;
   margin: 0;
   cursor: default;
 `;
@@ -518,6 +515,8 @@ const ActionButtons = styled.div`
 
 const BackButton = styled(motion.button)`
   font-family: 'Poppins', sans-serif;
+  font-style: normal;
+  font-weight: 400;
   padding: 20px;
   font-size: 0.9rem;
   line-height: 0.8;
@@ -538,6 +537,8 @@ const BackButton = styled(motion.button)`
 
 const ResendButton = styled(motion.button)`
   font-family: 'Poppins', sans-serif;
+  font-style: normal;
+  font-weight: 400;
   padding: 20px;
   font-size: 0.9rem;
   line-height: 0.8;
