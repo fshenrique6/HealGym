@@ -42,7 +42,13 @@ public class EmailService {
   }
 
   private static String frontendBaseUrl() {
-    String url = Env.orDefault("FRONTEND_URL", "http://localhost:3000");
+    String url = Env.get("FRONTEND_URL");
+    if (url == null || url.isEmpty()) {
+      if ("production".equals(Env.get("NODE_ENV"))) {
+        throw new IllegalStateException("FRONTEND_URL deve ser configurado em produção.");
+      }
+      url = "http://localhost:3000";
+    }
     return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
   }
 
