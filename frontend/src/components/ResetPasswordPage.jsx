@@ -218,14 +218,13 @@ const ResetPasswordPage = () => {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
             >
-              <SuccessIcon>✅</SuccessIcon>
               <SuccessTitle>Senha Redefinida!</SuccessTitle>
               <SuccessMessage>Sua senha foi redefinida com sucesso.</SuccessMessage>
               <SuccessSubtext>Agora você pode fazer login com sua nova senha.</SuccessSubtext>
               <ActionButtons>
                 <ActionButton
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={() => navigate('/login')}
                 >
                   Fazer Login
@@ -280,8 +279,8 @@ const LogoTitle = styled.h1`
   }
 `;
 const FormSection = styled(motion.section)`
-  width: min(100%, 440px);
-  padding: 28px 18px 15px;
+  width: min(100%, 540px);
+  padding: 30px 18px 15px;
   margin-top: 1px;
   background: var(--card-bg);
   border-radius: 5px;
@@ -447,7 +446,7 @@ const SubmitButton = styled(motion.button)`
     box-shadow: 0 8px 18px rgba(198, 169, 100, 0.26);
   }
   &:active:not(:disabled) {
-    transform: translateY(-2px) scale(0.99);
+    transform: translateY(-1px) scale(0.6);
   }
   &:disabled {
     opacity: 0.6;
@@ -497,15 +496,13 @@ const ErrorContainer = styled(motion.div)`
   align-items: center;
   gap: 12px;
 `;
-const SuccessIcon = styled.div`
-  font-size: 2.5rem;
-  line-height: 1;
-`;
 const ErrorIcon = styled.div`
   font-size: 2.5rem;
   line-height: 1;
 `;
 const SuccessTitle = styled.h2`
+  font-family: 'Cinzel', serif;
+  font-style: normal;
   font-size: 2rem;
   line-height: 1.15;
   color: var(--white);
@@ -542,6 +539,7 @@ const SuccessMessage = styled.p`
   margin: 0;
   text-align: center;
   font-family: 'Cormorant', serif;
+  font-style: normal;
   letter-spacing: 0.04em;
   cursor: default;
 `;
@@ -550,7 +548,7 @@ const SuccessSubtext = styled.p`
   line-height: 1.3;
   color: var(--text-secondary);
   font-family: 'Cormorant', serif;
-  font-style: italic;
+  font-style: normal;
   margin: 0;
   cursor: default;
 `;
@@ -572,6 +570,8 @@ const ActionButtons = styled.div`
 `;
 const ActionButton = styled(motion.button)`
   font-family: 'Poppins', sans-serif;
+  font-style: normal;
+  font-weight: 400;
   padding: 20px;
   font-size: 0.9rem;
   line-height: 0.8;

@@ -103,12 +103,7 @@ const ProfileSetupPage = () => {
       });
 
       updateUser(response.user);
-
-      setSubmitMessage('Informações salvas com sucesso! Redirecionando...');
-
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
+      navigate('/dashboard');
     } catch (error) {
       setSubmitMessage(error.message || 'Erro ao salvar informações. Tente novamente.');
     } finally {
@@ -284,8 +279,8 @@ const ProfileSetupPage = () => {
               <SubmitButton
                 type="submit"
                 disabled={isSubmitting}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
               >
                 {isSubmitting ? 'Salvando...' : 'Continuar'}
               </SubmitButton>

@@ -1,19 +1,24 @@
-import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
+import styled, { css } from 'styled-components';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { FiAlertTriangle, FiCheck, FiTrash2 } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
+
+const linkInvalido = (texto) => /inválid|expirad/i.test(texto || '');
 
 const ConfirmDeletePage = () => {
   const navigate = useNavigate();
   const { token } = useParams();
   const { logout } = useAuth();
+  const reduzirMovimento = useReducedMotion();
+  const confirmandoRef = useRef(false);
+  const redirecionarRef = useRef(null);
 
   const [isConfirming, setIsConfirming] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(token ? '' : 'Token de confirmação inválido ou expirado');
   const [isSuccess, setIsSuccess] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -22,21 +27,21 @@ const ConfirmDeletePage = () => {
     return () => {
       document.body.style.overflow = '';
       document.documentElement.style.overflow = '';
+      if (redirecionarRef.current) clearTimeout(redirecionarRef.current);
     };
   }, []);
 
   const handleConfirmDeletion = async () => {
+    if (confirmandoRef.current || isSuccess || linkInvalido(message)) return;
+    confirmandoRef.current = true;
     setIsConfirming(true);
     setMessage('');
 
     try {
       const response = await api.confirmAccountDeletion(token);
-
       setMessage(response.message || 'Conta excluída com sucesso!');
       setIsSuccess(true);
-      setShowConfirmation(false);
-
-      setTimeout(() => {
+      redirecionarRef.current = setTimeout(() => {
         logout();
         navigate('/', { replace: true });
       }, 3000);
@@ -44,6 +49,7 @@ const ConfirmDeletePage = () => {
       setMessage(error.message || 'Erro ao confirmar exclusão. O link pode ter expirado.');
       setIsSuccess(false);
     } finally {
+      confirmandoRef.current = false;
       setIsConfirming(false);
     }
   };
@@ -52,704 +58,313 @@ const ConfirmDeletePage = () => {
     navigate('/dashboard', { replace: true });
   };
 
+  const invalido = !isSuccess && linkInvalido(message);
+  const erroServidor = !isSuccess && message && !invalido;
+
   return (
-    <Container>
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
+    <Pagina>
+      <LogoTitle onClick={() => navigate('/')}>HealGym</LogoTitle>
+      <Painel
+        initial={reduzirMovimento ? false : { opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8 }}
+        transition={{ duration: reduzirMovimento ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+        aria-labelledby="confirmar-exclusao-titulo"
       >
-        <LogoTitle>HealGym</LogoTitle>
-      </motion.div>
-      <ContentSection>
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-        >
-          <TitleRow>
-            <WarningIcon>🚨</WarningIcon>
-            <PageTitle>⚠️ Confirmação de Exclusão de Conta</PageTitle>
-          </TitleRow>
-          <PageSubtitle>
-            <div>Esta é sua última chance de reconsiderar</div>
-            <div>Esta ação é permanente e irreversível</div>
-          </PageSubtitle>
-
-          {!message && (
-            <WarningContainer>
-              <WarningTitle>ATENÇÃO - AÇÃO IRREVERSÍVEL</WarningTitle>
-              <WarningText>
-                Você está prestes a <strong>EXCLUIR PERMANENTEMENTE</strong> sua conta no HealGym.
-                Esta ação resultará na perda completa de:
-              </WarningText>
-
-              <WarningList>
-                <li>
-                  <ItemIcon>🗑️</ItemIcon>
-                  <span>Todos os seus dados pessoais e de perfil</span>
-                </li>
-                <li>
-                  <ItemIcon>🗑️</ItemIcon>
-                  <span>Histórico completo de treinos e progressos</span>
-                </li>
-                <li>
-                  <ItemIcon>🗑️</ItemIcon>
-                  <span>Configurações e preferências personalizadas</span>
-                </li>
-                <li>
-                  <ItemIcon>🗑️</ItemIcon>
-                  <span>Acesso permanente à plataforma HealGym</span>
-                </li>
-              </WarningList>
-
-              <FinalConfirmText>
-                <strong>Tem certeza absoluta que deseja prosseguir?</strong>
-              </FinalConfirmText>
-
-              <ButtonGroup>
-                <CancelButton type="button" onClick={handleCancel}>
-                  💚 Não, Manter Minha Conta
-                </CancelButton>
-
-                <ConfirmButton
-                  type="button"
-                  onClick={() => setShowConfirmation(true)}
-                  disabled={isConfirming}
-                >
-                  🗑️ Sim, Excluir Permanentemente
-                </ConfirmButton>
-              </ButtonGroup>
-            </WarningContainer>
-          )}
-
-          <AnimatePresence>
-            {message && (
-              <MessageContainer
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className={isSuccess ? 'success' : 'error'}
-              >
-                {isSuccess && <SuccessIcon>✅</SuccessIcon>}
-                {!isSuccess && <ErrorIcon>❌</ErrorIcon>}
-                <MessageText>{message}</MessageText>
-                {isSuccess && <RedirectText>Redirecionando para a página inicial...</RedirectText>}
-              </MessageContainer>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </ContentSection>
-
-      <AnimatePresence>
-        {showConfirmation && (
-          <ModalOverlay
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            onClick={() => setShowConfirmation(false)}
-          >
-            <ModalContent
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.8, opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ModalHeader>
-                <ModalTitle>💀 ÚLTIMA CONFIRMAÇÃO</ModalTitle>
-              </ModalHeader>
-
-              <ModalBody>
-                <FinalWarningText>
-                  <strong>ESTA É SUA ÚLTIMA CHANCE!</strong>
-                </FinalWarningText>
-                <FinalWarningText>
-                  Após clicar em "EXCLUIR AGORA", sua conta será{' '}
-                  <strong>PERMANENTEMENTE REMOVIDA </strong>e você <strong>NUNCA MAIS</strong>{' '}
-                  poderá recuperá-la.
-                </FinalWarningText>
-                <FinalConfirmQuestion>
-                  Tem certeza absoluta que deseja continuar?
-                </FinalConfirmQuestion>
-              </ModalBody>
-
-              <ModalFooter>
-                <ModalCancelButton type="button" onClick={() => setShowConfirmation(false)}>
-                  Cancelar
-                </ModalCancelButton>
-                <ModalDeleteButton
-                  type="button"
-                  onClick={handleConfirmDeletion}
-                  disabled={isConfirming}
-                >
-                  {isConfirming ? 'Excluindo...' : '💀 EXCLUIR AGORA'}
-                </ModalDeleteButton>
-              </ModalFooter>
-            </ModalContent>
-          </ModalOverlay>
+        {isSuccess && (
+          <>
+            <Identificacao>
+              <Selo $tom="neutro" aria-hidden="true">
+                <FiCheck />
+              </Selo>
+              <Titulo id="confirmar-exclusao-titulo">Conta excluída</Titulo>
+              <Subtitulo>A exclusão foi concluída.</Subtitulo>
+            </Identificacao>
+            <Aviso>
+              <AvisoTexto>{message}</AvisoTexto>
+              <AvisoTexto>Você será levado à página inicial.</AvisoTexto>
+            </Aviso>
+          </>
         )}
-      </AnimatePresence>
-    </Container>
+
+        {invalido && (
+          <>
+            <Identificacao>
+              <Selo aria-hidden="true">
+                <FiAlertTriangle />
+              </Selo>
+              <Titulo id="confirmar-exclusao-titulo">Link inválido ou expirado</Titulo>
+              <Subtitulo>Este link não pode mais ser usado para excluir a conta.</Subtitulo>
+            </Identificacao>
+            <Aviso>
+              <AvisoTexto>{message}</AvisoTexto>
+            </Aviso>
+            <Decisao>
+              <BotaoNeutro type="button" onClick={() => navigate('/', { replace: true })}>
+                Voltar ao início
+              </BotaoNeutro>
+            </Decisao>
+          </>
+        )}
+
+        {!isSuccess && !invalido && (
+          <>
+            <Identificacao>
+              <Selo aria-hidden="true">
+                <FiAlertTriangle />
+              </Selo>
+              <Titulo id="confirmar-exclusao-titulo">Excluir sua conta?</Titulo>
+              <Subtitulo>Você está prestes a confirmar a exclusão definitiva da sua conta.</Subtitulo>
+            </Identificacao>
+            <Aviso>
+              <AvisoTitulo>Esta ação não poderá ser desfeita</AvisoTitulo>
+              <AvisoTexto>
+                Após confirmar, sua conta será excluída e você perderá o acesso aos dados associados a ela.
+              </AvisoTexto>
+              <Consequencias>
+                <li>Perfil e dados pessoais.</li>
+                <li>Acesso a esta conta.</li>
+                <li>Acesso aos treinos, dietas e histórico feitos nela.</li>
+              </Consequencias>
+            </Aviso>
+            {erroServidor && <MensagemErro role="alert">{message}</MensagemErro>}
+            <Decisao>
+              <BotaoNeutro type="button" onClick={handleCancel} disabled={isConfirming}>
+                Manter minha conta
+              </BotaoNeutro>
+              <BotaoExcluir
+                type="button"
+                onClick={handleConfirmDeletion}
+                disabled={isConfirming}
+                aria-busy={isConfirming}
+              >
+                <FiTrash2 aria-hidden="true" />
+                {isConfirming ? 'Excluindo...' : 'Excluir minha conta'}
+              </BotaoExcluir>
+            </Decisao>
+          </>
+        )}
+      </Painel>
+    </Pagina>
   );
 };
 
-const Container = styled.div`
+const Pagina = styled.div`
   width: 100%;
-  height: 100vh;
-  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
   margin: 0;
-  padding: 24px 40px;
-  overflow-x: hidden;
-  overflow-y: auto;
+  padding: 2.25rem 1.25rem;
   box-sizing: border-box;
-  background: linear-gradient(
-    135deg,
-    var(--gradient-start) 0%,
-    var(--gradient-mid) 50%,
-    var(--gradient-end) 100%
-  );
+  overflow-x: hidden;
+  background: var(--background);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: safe center;
-  gap: 16px;
+  justify-content: center;
+  gap: 1.6rem;
 `;
 
 const LogoTitle = styled.h1`
+  margin: 0;
   font-size: 2.5rem;
   line-height: 1.1;
   text-decoration: underline;
   text-decoration-thickness: 0.1px;
   text-underline-offset: 5px;
   text-decoration-color: rgba(141, 140, 140, 0.2);
-  color: var(--white);
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
   font-weight: 600;
   background: var(--gold-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: 0.28em;
   padding-left: 0.28em;
-  cursor: default;
-  font-family: 'Cinzel', serif;
-  margin: 0;
-`;
-
-const ContentSection = styled.section`
-  width: min(100%, 440px);
-  padding: 28px 22px 22px;
-  background: linear-gradient(180deg, #161616 0%, #101010 100%);
-  border-radius: 5px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
-  border: 1px solid rgba(198, 169, 100, 0.28);
+  cursor: pointer;
+  transition: transform 0.3s ease;
   flex-shrink: 0;
+
+  &:hover {
+    transform: scale(1.05);
+  }
 `;
 
-const TitleRow = styled.div`
-  display: flex;
-  flex-direction: column;
+const Painel = styled(motion.section)`
+  width: min(100%, 640px);
+  background: #141414;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.45);
+`;
+
+const Identificacao = styled.header`
+  padding: 1.7rem 1.6rem 0;
+
+  @media (max-width: 640px) {
+    padding: 1.35rem 1.15rem 0;
+  }
+`;
+
+const Selo = styled.span`
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-`;
+  justify-content: center;
+  border-radius: 10px;
+  color: ${(props) => (props.$tom === 'neutro' ? 'var(--accent)' : '#d7a3a3')};
+  background: ${(props) => (props.$tom === 'neutro' ? 'rgba(198, 169, 100, 0.1)' : 'rgba(120, 42, 42, 0.45)')};
 
-const PageTitle = styled.h1`
-  font-size: 1.35rem;
-  line-height: 1.2;
-  color: #dc2626;
-  margin: 0;
-  font-weight: 600;
-  text-align: center;
-  letter-spacing: 0.08em;
-  cursor: default;
-  font-family: 'Cinzel', serif;
-  text-wrap: balance;
-`;
-
-const PageSubtitle = styled.p`
-  font-size: 1rem;
-  color: var(--text-secondary);
-  margin: 0 0 12px;
-  text-align: center;
-  font-family: 'Cormorant', 'Marcellus', serif;
-  letter-spacing: 0.04em;
-  cursor: default;
-  line-height: 1.3;
-  font-weight: 400;
-
-  div {
-    margin-bottom: 0.2rem;
-
-    &:last-child {
-      margin-bottom: 0;
-    }
+  svg {
+    font-size: 1.05rem;
   }
 `;
 
-const WarningContainer = styled.div`
-  background: transparent;
-  border: none;
-  padding: 0;
-  margin: 0;
-`;
-
-const WarningIcon = styled.div`
-  font-size: 1.25rem;
-  line-height: 1;
-  text-align: center;
-`;
-
-const WarningTitle = styled.h2`
+const Titulo = styled.h2`
+  margin: 0.9rem 0 0;
   color: var(--white);
-  font-size: 1.05rem;
-  line-height: 1.2;
-  font-weight: 600;
-  text-align: center;
-  margin: 0 0 8px;
   font-family: 'Cinzel', serif;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  text-wrap: balance;
-`;
+  font-size: 1.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-transform: none;
 
-const WarningText = styled.p`
-  color: var(--text-secondary);
-  font-size: 1rem;
-  font-weight: 400;
-  text-align: center;
-  margin: 0 0 10px;
-  letter-spacing: 0.04em;
-  line-height: 1.3;
-  font-family: 'Cormorant', 'Marcellus', serif;
-
-  strong {
-    color: #dc2626;
-    font-weight: 600;
+  @media (max-width: 640px) {
+    font-size: 1.45rem;
   }
 `;
 
-const WarningList = styled.ul`
-  list-style: none;
-  color: var(--text-secondary);
-  font-family: 'Cormorant', 'Marcellus', serif;
-  font-size: 0.95rem;
-  line-height: 1.3;
-  letter-spacing: 0.04em;
-  margin: 0 0 4px;
+const Subtitulo = styled.p`
+  margin: 0.45rem 0 0;
+  max-width: 34rem;
+  color: #bdbdbd;
+  font-family: 'Marcellus', serif;
+  font-size: 1.02rem;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+`;
+
+const Aviso = styled.section`
+  margin: 1.35rem 1.6rem 0;
+  padding: 1rem 1rem 0.95rem 0.95rem;
+  border-radius: 12px;
+  background: rgba(92, 36, 36, 0.28);
+  box-shadow: inset 2px 0 0 #8a4040;
+
+  @media (max-width: 640px) {
+    margin: 1.15rem 1.15rem 0;
+  }
+`;
+
+const AvisoTitulo = styled.h2`
+  margin: 0;
+  color: #f3e4e4;
+  font-family: 'Cinzel', serif;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  text-transform: none;
+`;
+
+const AvisoTexto = styled.p`
+  margin: 0.4rem 0 0;
+  color: #d5d5d5;
+  font-family: 'Marcellus', serif;
+  font-size: 0.98rem;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+
+  & + & {
+    margin-top: 0.35rem;
+  }
+`;
+
+const Consequencias = styled.ul`
+  margin: 0.8rem 0 0;
   padding: 0;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-
-  li,
-  li span {
-    font-family: 'Cormorant', 'Marcellus', serif;
-    font-size: 1rem;
-    line-height: 1.3;
-    letter-spacing: 0.04em;
-    font-weight: 400;
-  }
+  gap: 0.35rem;
 
   li {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin: 0;
+    position: relative;
+    padding-left: 0.9rem;
+    color: #cfcfcf;
+    font-family: 'Marcellus', serif;
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+
+  li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.55em;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #a15a5a;
   }
 `;
 
-const ItemIcon = styled.span`
-  flex: 0 0 auto;
-  width: 1.1rem;
-  line-height: 1.3;
-  text-align: center;
-`;
-
-const FinalConfirmText = styled.p`
-  color: var(--accent);
-  font-size: 1.05rem;
-  line-height: 1.35;
-  letter-spacing: 0.03em;
-  font-weight: 600;
-  text-align: center;
-  margin: 8px 0 16px;
-  font-family: 'Cormorant', 'Marcellus', serif;
-  text-wrap: balance;
-
-  strong {
-    font-weight: 600;
-  }
-`;
-
-const ButtonGroup = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 0;
-`;
-
-const CancelButton = styled.button`
-  box-sizing: border-box;
-  font-family: 'Poppins', sans-serif;
-  min-height: 48px;
-  padding: 14px 20px;
-  font-size: 0.9rem;
-  line-height: 1.2;
-  background: #121212;
-  color: var(--text-secondary);
-  border: 1px solid rgba(198, 169, 100, 0.35);
-  border-radius: 5px;
-  transition:
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    color 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  width: 100%;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-
-  &:hover {
-    color: var(--accent);
-    border-color: var(--accent);
-    background: #1a1814;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
-  }
-
-  &:active {
-    transform: translateY(-2px) scale(0.99);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 3px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-
-    &:hover,
-    &:active {
-      transform: none;
-    }
-  }
-`;
-
-const ConfirmButton = styled.button`
-  box-sizing: border-box;
-  font-family: 'Poppins', sans-serif;
-  min-height: 48px;
-  padding: 14px 20px;
-  font-size: 0.9rem;
-  line-height: 1.2;
-  background: linear-gradient(180deg, #c53838 0%, #9d1c1c 100%);
-  color: #fff;
-  border: none;
-  border-radius: 5px;
-  transition:
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  width: 100%;
-  cursor: pointer;
-  box-shadow: 0 8px 18px rgba(157, 28, 28, 0.28);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-wrap: balance;
-
-  &:hover:not(:disabled) {
-    filter: brightness(1.06);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 22px rgba(157, 28, 28, 0.38);
-  }
-
-  &:active:not(:disabled) {
-    transform: translateY(-2px) scale(0.99);
-  }
-
-  &:disabled {
-    opacity: 0.7;
-    cursor: not-allowed;
-  }
-
-  &:focus-visible {
-    outline: 2px solid #e07a7a;
-    outline-offset: 3px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-
-    &:hover:not(:disabled),
-    &:active:not(:disabled) {
-      transform: none;
-    }
-  }
-`;
-
-const MessageContainer = styled(motion.div)`
-  padding: 12px;
-  border-radius: 5px;
-  text-align: center;
-  margin-top: 12px;
-
-  &.success {
-    background: rgba(76, 175, 80, 0.1);
-    border: 1px solid rgba(76, 175, 80, 0.3);
-    color: #4caf50;
-  }
-
-  &.error {
-    background: rgba(255, 107, 107, 0.1);
-    border: 1px solid rgba(255, 107, 107, 0.3);
-    color: #ff6b6b;
-  }
-`;
-
-const SuccessIcon = styled.div`
-  font-size: 1.35rem;
-  line-height: 1;
-  margin-bottom: 8px;
-  animation: bounce 1s infinite;
-
-  @keyframes bounce {
-    0%,
-    20%,
-    50%,
-    80%,
-    100% {
-      transform: translateY(0);
-    }
-    40% {
-      transform: translateY(-4px);
-    }
-    60% {
-      transform: translateY(-2px);
-    }
-  }
-`;
-
-const ErrorIcon = styled.div`
-  font-size: 1.35rem;
-  line-height: 1;
-  margin-bottom: 8px;
-  animation: shake 0.5s infinite;
-
-  @keyframes shake {
-    0%,
-    100% {
-      transform: translateX(0);
-    }
-    25% {
-      transform: translateX(-3px);
-    }
-    75% {
-      transform: translateX(3px);
-    }
-  }
-`;
-
-const MessageText = styled.p`
-  font-size: 1rem;
-  line-height: 1.3;
-  letter-spacing: 0.04em;
-  font-weight: 600;
-  margin: 0 0 6px;
-  font-family: 'Cormorant', 'Marcellus', serif;
-`;
-
-const RedirectText = styled.p`
+const MensagemErro = styled.p`
+  margin: 0.9rem 1.6rem 0;
+  color: #e3b4b4;
+  font-family: 'Marcellus', serif;
   font-size: 0.95rem;
-  line-height: 1.3;
-  font-style: italic;
-  margin: 0;
-  font-family: 'Cormorant', 'Marcellus', serif;
+  line-height: 1.4;
+
+  @media (max-width: 640px) {
+    margin-right: 1.15rem;
+    margin-left: 1.15rem;
+  }
 `;
 
-const ModalOverlay = styled(motion.div)`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.78);
+const Decisao = styled.div`
   display: flex;
+  gap: 0.7rem;
+  margin-top: 1.25rem;
+  padding: 1.15rem 1.6rem 1.45rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+    padding: 1rem 1.15rem 1.2rem;
+  }
+`;
+
+const botaoBase = css`
+  flex: 1;
+  min-height: 46px;
+  padding: 0.7rem 1rem;
+  border-radius: 10px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
-  padding: 24px 18px;
-`;
-
-const ModalContent = styled(motion.div)`
-  background: linear-gradient(180deg, #161616 0%, #101010 100%);
-  border-radius: 5px;
-  width: min(100%, 440px);
-  border: 1px solid rgba(198, 169, 100, 0.28);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
-  padding: 28px 22px 22px;
-`;
-
-const ModalHeader = styled.div`
-  padding: 0;
-  text-align: center;
-  margin-bottom: 12px;
-`;
-
-const ModalTitle = styled.h2`
-  color: #dc2626;
-  font-size: 1.35rem;
-  line-height: 1.2;
-  font-weight: 600;
-  margin: 0;
+  gap: 0.45rem;
   font-family: 'Cinzel', serif;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  text-align: center;
-  text-wrap: balance;
-`;
-
-const ModalBody = styled.div`
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`;
-
-const FinalWarningText = styled.p`
-  color: var(--text-secondary);
-  font-size: 1rem;
-  font-weight: 400;
-  margin: 0;
-  text-align: center;
-  line-height: 1.3;
-  letter-spacing: 0.04em;
-  font-family: 'Cormorant', 'Marcellus', serif;
-
-  strong {
-    color: #dc2626;
-    font-weight: 600;
-  }
-`;
-
-const FinalConfirmQuestion = styled.p`
-  color: var(--accent);
-  font-size: 1.05rem;
-  line-height: 1.35;
-  letter-spacing: 0.03em;
+  font-style: normal;
   font-weight: 600;
-  text-align: center;
-  margin: 4px 0 0;
-  font-family: 'Cormorant', 'Marcellus', serif;
-  text-wrap: balance;
-`;
-
-const ModalFooter = styled.div`
-  padding: 18px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-`;
-
-const ModalCancelButton = styled.button`
-  box-sizing: border-box;
-  font-family: 'Poppins', sans-serif;
-  min-height: 48px;
-  padding: 14px 20px;
-  font-size: 0.9rem;
-  line-height: 1.2;
-  letter-spacing: 0.1em;
-  background: #121212;
-  color: var(--text-secondary);
-  border: 1px solid rgba(198, 169, 100, 0.35);
-  border-radius: 5px;
-  transition:
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    color 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1);
-  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
-  cursor: pointer;
-  text-transform: uppercase;
-  width: 100%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-
-  &:hover {
-    color: var(--accent);
-    border-color: var(--accent);
-    background: #1a1814;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
-  }
-
-  &:active {
-    transform: translateY(-2px) scale(0.99);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 3px;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    transition: none;
-
-    &:hover,
-    &:active {
-      transform: none;
-    }
-  }
-`;
-
-const ModalDeleteButton = styled.button`
-  box-sizing: border-box;
-  font-family: 'Poppins', sans-serif;
-  min-height: 48px;
-  padding: 14px 20px;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   line-height: 1.2;
   letter-spacing: 0.08em;
-  background: linear-gradient(180deg, #c53838 0%, #9d1c1c 100%);
-  color: #fff;
-  border: none;
-  border-radius: 5px;
+  text-transform: none;
+  cursor: pointer;
   transition:
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 220ms cubic-bezier(0.22, 1, 0.36, 1);
   transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
-  cursor: pointer;
-  box-shadow: 0 8px 18px rgba(157, 28, 28, 0.28);
-  text-transform: uppercase;
-  width: 100%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  text-wrap: balance;
+
+  svg {
+    font-size: 0.95rem;
+  }
 
   &:hover:not(:disabled) {
-    filter: brightness(1.06);
     transform: translateY(-2px);
-    box-shadow: 0 10px 22px rgba(157, 28, 28, 0.38);
   }
 
   &:active:not(:disabled) {
@@ -757,13 +372,8 @@ const ModalDeleteButton = styled.button`
   }
 
   &:disabled {
-    opacity: 0.7;
+    opacity: 0.55;
     cursor: not-allowed;
-  }
-
-  &:focus-visible {
-    outline: 2px solid #e07a7a;
-    outline-offset: 3px;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -773,6 +383,40 @@ const ModalDeleteButton = styled.button`
     &:active:not(:disabled) {
       transform: none;
     }
+  }
+`;
+
+const BotaoNeutro = styled.button`
+  ${botaoBase}
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: #ececec;
+
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.28);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+`;
+
+const BotaoExcluir = styled.button`
+  ${botaoBase}
+  border: 1px solid #7d3838;
+  background: #7d3838;
+  color: var(--white);
+
+  &:hover:not(:disabled) {
+    background: #8d4444;
+    border-color: #8d4444;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #e7b1b1;
+    outline-offset: 2px;
   }
 `;
 
