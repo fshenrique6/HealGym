@@ -23,6 +23,7 @@ import {
   calculateBodyMassIndex,
 } from '../utils/healthCalculations';
 import { cronogramaSemanal } from '../utils/cronogramaSemanal';
+import IndicadorAjuda from './IndicadorAjuda';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -222,8 +223,8 @@ const Dashboard = () => {
                 <FiUser />
               </ProfileButton>
               <LogoutButton
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={handleLogout}
               >
                 <FiLogOut />
@@ -247,7 +248,17 @@ const Dashboard = () => {
                       <FiHeart />
                     </MetricIcon>
                     <MetricContent>
-                      <MetricLabel>Taxa Metabólica Basal</MetricLabel>
+                      <MetricHeading>
+                        <MetricLabel>Taxa Metabólica Basal</MetricLabel>
+                        <IndicadorAjuda
+                          tipo="tmb"
+                          peso={user?.profile?.weight}
+                          altura={user?.profile?.height}
+                          idade={age}
+                          sexo={user?.profile?.gender}
+                          resultado={tmb}
+                        />
+                      </MetricHeading>
                       <MetricValue>{tmb ? `${tmb} kcal/dia` : 'Calculando...'}</MetricValue>
                       <MetricDescription>Calorias queimadas em repouso</MetricDescription>
                     </MetricContent>
@@ -258,7 +269,16 @@ const Dashboard = () => {
                       <FiTarget />
                     </MetricIcon>
                     <MetricContent>
-                      <MetricLabel>Índice de Massa Corporal</MetricLabel>
+                      <MetricHeading>
+                        <MetricLabel>Índice de Massa Corporal</MetricLabel>
+                        <IndicadorAjuda
+                          tipo="imc"
+                          peso={user?.profile?.weight}
+                          altura={user?.profile?.height}
+                          resultado={imc}
+                          classificacao={imcClass?.text}
+                        />
+                      </MetricHeading>
                       <MetricValue>{imc ? `${imc} kg/m²` : 'Calculando...'}</MetricValue>
                       {imcClass && <IMCStatus color={imcClass.color}>{imcClass.text}</IMCStatus>}
                     </MetricContent>
@@ -630,13 +650,19 @@ const MetricContent = styled.div`
   flex: 1;
 `;
 
+const MetricHeading = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.25rem;
+`;
+
 const MetricLabel = styled.div`
   color: var(--text-secondary);
   font-family: 'Cormorant', serif;
   font-size: 0.82rem;
   line-height: 1.3;
   letter-spacing: 0.04em;
-  margin-bottom: 0.25rem;
   font-weight: 400;
 `;
 
@@ -825,6 +851,8 @@ const EditableInfo = ({
   };
 
   const save = async () => {
+    if (saving) return;
+
     const message = validatePhysicalProfileField(field, draft);
     if (message) {
       setError(message);
@@ -847,13 +875,25 @@ const EditableInfo = ({
     }
   };
 
+  const confirmOnEnter = (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    save();
+  };
+
   return (
     <InfoItem>
       <InfoLabel>{label}</InfoLabel>
       {editing ? (
         <EditBox initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }}>
           {kind === 'select' ? (
-            <InlineSelect value={draft} aria-label={label} onChange={(event) => setDraft(event.target.value)}>
+            <InlineSelect
+              value={draft}
+              aria-label={label}
+              autoFocus
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={confirmOnEnter}
+            >
               {(field === 'gender' ? GENDER_OPTIONS : BODY_TYPE_OPTIONS).map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -868,7 +908,9 @@ const EditableInfo = ({
               max={max}
               step={step}
               aria-label={label}
+              autoFocus
               onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={confirmOnEnter}
             />
           )}
           <EditActions>
