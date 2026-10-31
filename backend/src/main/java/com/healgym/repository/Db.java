@@ -42,6 +42,10 @@ public class Db {
     return database.getCollection("workout_executions");
   }
 
+  public MongoCollection<Document> bodyMeasurements() {
+    return database.getCollection("body_measurements");
+  }
+
   public void ping() {
     database.runCommand(new Document("ping", 1));
   }
@@ -55,6 +59,12 @@ public class Db {
           .createIndex(
               Indexes.compoundIndex(Indexes.ascending("user"), Indexes.descending("createdAt")));
       new ExecutionRepository(executions()).ensureIndexes();
+      bodyMeasurements()
+          .createIndex(
+              Indexes.compoundIndex(
+                  Indexes.ascending("user"),
+                  Indexes.ascending("dataMedicao"),
+                  Indexes.ascending("createdAt")));
     } catch (RuntimeException e) {
       System.err.println("Erro ao criar índices: " + e.getMessage());
     }
