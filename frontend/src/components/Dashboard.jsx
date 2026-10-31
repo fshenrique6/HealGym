@@ -1,7 +1,7 @@
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   FiLogOut,
   FiUser,
@@ -24,6 +24,7 @@ import {
 } from '../utils/healthCalculations';
 import { cronogramaSemanal } from '../utils/cronogramaSemanal';
 import IndicadorAjuda from './IndicadorAjuda';
+import CalendarioTreinos from './CalendarioTreinos';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -33,6 +34,8 @@ const Dashboard = () => {
   const [modalHistorico, setModalHistorico] = useState(false);
   const [treinosDoDia, setTreinosDoDia] = useState([]);
   const [diaSelecionado, setDiaSelecionado] = useState(null);
+  const [calendarioAberto, setCalendarioAberto] = useState(false);
+  const botaoCalendarioRef = useRef(null);
 
   const getIMCClassification = (imc) => {
     if (!imc) return null;
@@ -203,6 +206,14 @@ const Dashboard = () => {
           </ModalOverlay>
         )}
       </AnimatePresence>
+
+      <CalendarioTreinos
+        aberto={calendarioAberto}
+        onFechar={() => {
+          setCalendarioAberto(false);
+          botaoCalendarioRef.current?.blur();
+        }}
+      />
 
       <Container className="custom-scroll">
         <Header>
@@ -409,6 +420,20 @@ const Dashboard = () => {
                     dias), <strong>ABCD</strong> (4 dias) ou <strong>Full Body</strong>. <br />
                     Aqui marcamos apenas se houve treino realizado naquele dia.
                   </CalendarSubtitle>
+                  <CalendarActionRow>
+                    <CalendarAction
+                      ref={botaoCalendarioRef}
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded={calendarioAberto}
+                      aria-controls="calendario-treinos"
+                      onClick={() => setCalendarioAberto(true)}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      Ver calendário completo
+                    </CalendarAction>
+                  </CalendarActionRow>
                   <CalendarGrid>
                     {cronogramaSemanal.map((diaInfo, index) => {
                       const isToday = getDiaAtual() === diaInfo.dayOfWeek;
@@ -1081,6 +1106,39 @@ const CalendarSubtitle = styled.p`
   margin: 0 auto 20px auto;
   max-width: 640px;
   text-align: center;
+`;
+
+const CalendarActionRow = styled.div`
+  display: flex;
+  justify-content: center;
+  margin: 0 0 1.25rem;
+`;
+
+const CalendarAction = styled(motion.button)`
+  background: transparent;
+  border: 1px solid rgba(198, 169, 100, 0.45);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 0.45rem 0.95rem;
+  font-family: 'Cormorant', serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.03em;
+  text-transform: none;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+
+  &:hover {
+    background: rgba(198, 169, 100, 0.12);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 `;
 
 const CalendarGrid = styled.div`

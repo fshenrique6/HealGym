@@ -193,18 +193,58 @@ public class WorkoutController extends BaseController {
   }
 
   @GetMapping("/my-workouts")
-  public ResponseEntity<Object> myWorkouts(HttpServletRequest request) {
+  public ResponseEntity<Object> myWorkouts(
+      @RequestParam(value = "de", required = false) String de,
+      @RequestParam(value = "ate", required = false) String ate,
+      HttpServletRequest request) {
     User user = auth.authenticate(request);
 
     try {
-      List<Document> found = workouts.findByUser(user.getId(), 50);
+      if (periodoAusente(de) && periodoAusente(ate)) {
+        List<Document> found = workouts.findByUser(user.getId(), 50);
 
+        return ok(
+            Json.obj("success", true, "count", found.size(), "data", new ArrayList<Object>(found)));
+      }
+      if (periodoAusente(de) || periodoAusente(ate)) {
+        throw message(400, "Informe o início e o fim do período");
+      }
+
+      Date inicio;
+      Date fim;
+      try {
+        inicio = Date.from(Instant.parse(de));
+        fim = Date.from(Instant.parse(ate));
+      } catch (DateTimeParseException e) {
+        throw message(400, "Período inválido");
+      }
+      long amplitude = fim.getTime() - inicio.getTime();
+      if (amplitude <= 0 || amplitude > 40L * 24 * 60 * 60 * 1000) {
+        throw message(400, "Período inválido");
+      }
+
+      int limite = 200;
+      List<Document> found = workouts.findRealizadosEntre(user.getId(), inicio, fim, limite);
       return ok(
-          Json.obj("success", true, "count", found.size(), "data", new ArrayList<Object>(found)));
+          Json.obj(
+              "success",
+              true,
+              "count",
+              found.size(),
+              "truncado",
+              found.size() == limite,
+              "data",
+              new ArrayList<Object>(found)));
+    } catch (ApiException e) {
+      throw e;
     } catch (Exception e) {
       System.err.println("Erro ao buscar treinos: " + e);
       throw failure("Erro ao buscar treinos", e);
     }
+  }
+
+  private static boolean periodoAusente(String valor) {
+    return valor == null || valor.isBlank();
   }
 
   @GetMapping("/progresso")
