@@ -9,6 +9,7 @@ import com.healgym.service.EmailService;
 import com.healgym.util.Js;
 import com.healgym.util.Json;
 import com.healgym.validation.ProfileRules;
+import com.healgym.validation.TrainingProfile;
 import com.healgym.validation.Validator;
 import com.healgym.web.ApiException;
 import com.mongodb.client.model.Filters;
@@ -218,6 +219,7 @@ public class AuthController extends BaseController {
         .isLength(2, 50, "Nome deve ter entre 2 e 50 caracteres");
     validator.field("email").optional().isEmail("E-mail inválido").normalizeEmail();
     ProfileRules.apply(validator, true);
+    TrainingProfile.validate(validator, false);
     validator
         .field("newPassword")
         .optional()
@@ -271,11 +273,14 @@ public class AuthController extends BaseController {
         }
       }
 
+      TrainingProfile.apply(user.getProfile(), body);
       users.save(user, true);
 
       return ok(Json.obj("message", "Perfil atualizado com sucesso", "user", user.toJson()));
     } catch (ApiException e) {
       throw e;
+    } catch (User.ValidationFailure e) {
+      throw error(400, e.getMessage());
     } catch (Exception e) {
       throw internalError();
     }

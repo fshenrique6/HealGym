@@ -27,6 +27,7 @@ import { formatarData } from '../utils/medidasCorporais';
 import IndicadorAjuda from './IndicadorAjuda';
 import CalendarioTreinos from './CalendarioTreinos';
 import MedidasCorporais from './MedidasCorporais';
+import PerfilTreinoCard from './PerfilTreinoCard';
 import { LuRuler } from 'react-icons/lu';
 
 const Dashboard = () => {
@@ -404,6 +405,7 @@ const Dashboard = () => {
                       </MedidasChamada>
                     )}
                   </MedidasActionRow>
+                  <PerfilTreinoCard />
                 </>
               ) : (
                 <EmptyState>
