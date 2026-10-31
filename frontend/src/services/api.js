@@ -179,6 +179,11 @@ class ApiService {
     return this.request('/workouts/my-workouts');
   }
 
+  async getCompletedWorkouts(de, ate) {
+    const params = new URLSearchParams({ de, ate });
+    return this.request(`/workouts/my-workouts?${params.toString()}`);
+  }
+
   async getWorkout(id) {
     return this.request(`/workouts/${id}`);
   }
