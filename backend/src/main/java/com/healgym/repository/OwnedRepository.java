@@ -15,6 +15,10 @@ public class OwnedRepository {
   private final MongoCollection<Document> collection;
   private final String model;
 
+  protected MongoCollection<Document> documents() {
+    return collection;
+  }
+
   public OwnedRepository(MongoCollection<Document> collection, String model) {
     this.collection = collection;
     this.model = model;
