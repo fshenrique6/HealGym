@@ -461,9 +461,8 @@ const Dashboard = () => {
                 <WeeklyCalendar>
                   <CalendarTitle>Cronograma Semanal</CalendarTitle>
                   <CalendarSubtitle>
-                    Em <strong>Treinos</strong> você escolhe divisão em <strong>ABC</strong> (3
-                    dias), <strong>ABCD</strong> (4 dias) ou <strong>Full Body</strong>. <br />
-                    Aqui marcamos apenas se houve treino realizado naquele dia.
+                    A programação fica em <strong>Treinos</strong>, como Sessão 1, Sessão 2 e assim
+                    por diante. Este calendário só marca o dia em que um treino foi realizado.
                   </CalendarSubtitle>
                   <CalendarActionRow>
                     <CalendarAction

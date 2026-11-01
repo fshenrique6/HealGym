@@ -26,7 +26,8 @@ public final class WorkoutGenerator {
           "COSTAS_BICEPS",
           "PERNAS_OMBROS",
           "OMBROS_BRACOS",
-          "FULL_BODY");
+          "FULL_BODY",
+          "SUPERIOR");
 
   public static final List<String> DIVISOES = Arrays.asList("ABC", "ABCD", "FULL_BODY");
 
@@ -92,6 +93,7 @@ public final class WorkoutGenerator {
     METADATA.put("PERNAS_OMBROS", new Metadata("Treino C — Pernas e Ombros", "Pernas com joelho e quadril, seguidas de deltoides lateral e posterior."));
     METADATA.put("OMBROS_BRACOS", new Metadata("Treino D — Ombros e Braços", "Deltoides com volume principal; braços com volume reduzido, pois já trabalham em A e B."));
     METADATA.put("FULL_BODY", new Metadata("Treino Full Body", "Dominante de joelho, dominante de quadril, empurrar e puxar na mesma sessão."));
+    METADATA.put("SUPERIOR", new Metadata("Treino Superior", "Empurrar e puxar na mesma sessão, com ombros quando o tempo permitir."));
   }
 
   private static final Pattern LETTER = Pattern.compile("^[A-D]$");

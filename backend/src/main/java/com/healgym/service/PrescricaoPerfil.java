@@ -12,7 +12,8 @@ import java.util.Set;
  * <p>O tempo declarado não vira nível avançado. A frequência recente só eleva o rank inicial
  * quando a experiência já é de pelo menos um ano e o treino recente é regular (3 ou mais vezes
  * por semana). Frequência ausente, irregular, de 1 a 2 vezes ou inexistente mantém o rank
- * conservador. Dias disponíveis e duração preferida não entram nesta etapa.
+ * conservador. Dias disponíveis e duração preferida não alteram rank nem modo: o planejador
+ * semanal é quem os lê.
  *
  * <p>Rank 1 e 2 são os mesmos já usados pelo gerador (iniciante e intermediário). O rank 3 só
  * aparece quando o perfil antigo traz fitnessLevel avançado e a experiência nova está ausente.
@@ -39,22 +40,64 @@ public final class PrescricaoPerfil {
     public final int rank;
     public final String origemModo;
     public final String origemRank;
+    public final Integer dias;
+    public final Integer minutos;
+    public final String origemDias;
+    public final String origemMinutos;
 
-    Configuracao(String modo, int rank, String origemModo, String origemRank) {
+    Configuracao(
+        String modo,
+        int rank,
+        String origemModo,
+        String origemRank,
+        Integer dias,
+        Integer minutos,
+        String origemDias,
+        String origemMinutos) {
       this.modo = modo;
       this.rank = rank;
       this.origemModo = origemModo;
       this.origemRank = origemRank;
+      this.dias = dias;
+      this.minutos = minutos;
+      this.origemDias = origemDias;
+      this.origemMinutos = origemMinutos;
     }
   }
 
   public static Configuracao interpretar(User.Profile profile) {
     if (profile == null) {
-      return new Configuracao("hipertrofia", RANK_CONSERVADOR, "padrao", "padrao");
+      return new Configuracao("hipertrofia", RANK_CONSERVADOR, "padrao", "padrao", null, null, "ausente", "ausente");
     }
     Escolha modo = modo(profile);
     EscolhaInt rank = rank(profile);
-    return new Configuracao(modo.valor, rank.valor, modo.origem, rank.origem);
+    EscolhaInt dias = dias(profile);
+    EscolhaInt minutos = minutos(profile);
+    return new Configuracao(
+        modo.valor,
+        rank.valor,
+        modo.origem,
+        rank.origem,
+        dias.valor == 0 ? null : dias.valor,
+        minutos.valor == 0 ? null : minutos.valor,
+        dias.origem,
+        minutos.origem);
+  }
+
+  private static EscolhaInt dias(User.Profile profile) {
+    Integer valor = profile.availableDays;
+    if (valor != null && valor >= 1 && valor <= 6) {
+      return new EscolhaInt(valor, "perfil");
+    }
+    return new EscolhaInt(0, "ausente");
+  }
+
+  private static EscolhaInt minutos(User.Profile profile) {
+    Integer valor = profile.preferredSessionMinutes;
+    if (valor != null && TrainingProfile.SESSION_MINUTES.contains(valor)) {
+      return new EscolhaInt(valor, "perfil");
+    }
+    return new EscolhaInt(0, "ausente");
   }
 
   private static Escolha modo(User.Profile profile) {

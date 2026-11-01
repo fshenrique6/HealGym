@@ -63,6 +63,8 @@ public final class CoberturaMuscular {
         return Arrays.asList(OMBROS, TRICEPS, BICEPS);
       case "FULL_BODY":
         return Arrays.asList(PERNAS, PEITORAL, COSTAS, OMBROS, TRICEPS, BICEPS, CORE);
+      case "SUPERIOR":
+        return Arrays.asList(PEITORAL, COSTAS, OMBROS, TRICEPS, BICEPS);
       default:
         return Arrays.asList(PEITORAL, COSTAS, OMBROS, PERNAS, TRICEPS, BICEPS, CORE);
     }
@@ -252,7 +254,7 @@ public final class CoberturaMuscular {
     return "nao_priorizada";
   }
 
-  static Number arredondar(double valor) {
+  public static Number arredondar(double valor) {
     double arredondado = Math.round(valor * 2) / 2.0;
     if (arredondado == Math.floor(arredondado)) {
       return (int) arredondado;

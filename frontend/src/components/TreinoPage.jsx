@@ -20,6 +20,7 @@ import {
   ModalButton,
 } from './treinoEstilos';
 import { TIPOS_DIVISAO } from '../utils/treinoDivisao';
+import ProgramaSemanalPainel from './ProgramaSemanalPainel';
 import LoadingSpinner from './LoadingSpinner';
 
 const TreinoPage = () => {
@@ -261,11 +262,12 @@ const TreinoPage = () => {
         >
           <PageTitle>Sistema de Treinos</PageTitle>
           <PageSubtitle>
-            Escolha a divisão (ABC, ABCD ou FULL BODY), o treino do dia quando aplicável e o tempo
-            disponível.
+            A programação abaixo segue os dias e o tempo do seu perfil. A sessão avulsa continua
+            disponível para gerar um treino isolado.
           </PageSubtitle>
 
           <ContentContainer>
+            <ProgramaSemanalPainel onAtualizado={carregarHistorico} />
             <GerarTreinoSection
               as={motion.div}
               initial={{ opacity: 0, y: 20 }}
@@ -274,7 +276,7 @@ const TreinoPage = () => {
             >
               <SectionTitle>
                 <FiZap />
-                Gerar Novo Treino
+                Sessão avulsa
               </SectionTitle>
 
               <FormContainer
@@ -420,7 +422,7 @@ const TreinoPage = () => {
                 <EmptyState>
                   <FiActivity size={48} />
                   <EmptyText>Nenhum treino gerado ainda</EmptyText>
-                  <EmptySubtext>Gere seu primeiro treino acima!</EmptySubtext>
+                  <EmptySubtext>Salve a programação acima ou gere uma sessão avulsa.</EmptySubtext>
                 </EmptyState>
               ) : (
                 <HistoricoGrid>

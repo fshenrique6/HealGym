@@ -175,6 +175,17 @@ class ApiService {
     });
   }
 
+  async getWorkoutProgram() {
+    return this.request('/workouts/programa');
+  }
+
+  async saveWorkoutProgram(dados = {}) {
+    return this.request('/workouts/programa', {
+      method: 'POST',
+      body: JSON.stringify(dados),
+    });
+  }
+
   async getMyWorkouts() {
     return this.request('/workouts/my-workouts');
   }
