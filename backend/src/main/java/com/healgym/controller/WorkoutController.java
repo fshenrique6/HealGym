@@ -478,6 +478,9 @@ public class WorkoutController extends BaseController {
 
   @GetMapping("/{id}")
   public ResponseEntity<Object> get(@PathVariable("id") String id, HttpServletRequest request) {
+    if ("programa".equals(id)) {
+      return programa(request);
+    }
     User user = auth.authenticate(request);
 
     try {
