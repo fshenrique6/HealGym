@@ -6,7 +6,10 @@ import com.healgym.repository.WorkoutRepository;
 import com.healgym.security.AuthService;
 import com.healgym.service.CoberturaMuscular;
 import com.healgym.service.ExecucaoRegras;
+import com.healgym.service.ExerciseAnatomy;
 import com.healgym.service.ExerciseDatabase;
+import com.healgym.service.PrescricaoPerfil;
+import com.healgym.service.ProgramaSemanal;
 import com.healgym.service.SessionPlanner;
 import com.healgym.service.WorkoutGenerator;
 import com.healgym.util.Js;
@@ -18,8 +21,10 @@ import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 import org.bson.Document;
 import org.bson.types.ObjectId;
@@ -59,12 +64,8 @@ public class WorkoutController extends BaseController {
     return new ApiException(500, Json.obj("message", message, "error", cause.getMessage()));
   }
 
-  private static String nivel(User user) {
-    return user.getProfile() == null ? null : user.getProfile().fitnessLevel;
-  }
-
-  private static List<String> objetivos(User user) {
-    return user.getProfile() == null ? null : user.getProfile().goals;
+  private static PrescricaoPerfil.Configuracao prescricao(User user) {
+    return PrescricaoPerfil.interpretar(user == null ? null : user.getProfile());
   }
 
   private static int seed(User user) {
@@ -145,11 +146,12 @@ public class WorkoutController extends BaseController {
         variante = anteriores % 2;
       }
 
+      PrescricaoPerfil.Configuracao cfg = prescricao(user);
       WorkoutGenerator.Metadata metadata = WorkoutGenerator.gerarMetadados(grupamento, letraTreino);
-      String modo = WorkoutGenerator.modoObjetivo(objetivos(user));
+      String modo = cfg.modo;
       WorkoutGenerator.Session session =
           WorkoutGenerator.montar(
-              grupamento, tempoDisponivel, nivel(user), objetivos(user), seed(user), variante);
+              grupamento, tempoDisponivel, cfg.rank, modo, seed(user), variante);
       String titulo =
           "FULL_BODY".equals(grupamento)
               ? metadata.titulo + " — Sessão " + (variante + 1)
@@ -190,6 +192,190 @@ public class WorkoutController extends BaseController {
       System.err.println("Erro ao gerar treino: " + e);
       throw failure("Erro ao gerar treino", e);
     }
+  }
+
+  @GetMapping("/programa")
+  public ResponseEntity<Object> programa(HttpServletRequest request) {
+    User user = auth.authenticate(request);
+    try {
+      ProgramaSemanal.Programa programa = ProgramaSemanal.planejar(user.getProfile(), seed(user), null);
+      return ok(Json.obj("success", true, "data", respostaPrograma(user, programa, false)));
+    } catch (ApiException e) {
+      throw e;
+    } catch (Exception e) {
+      System.err.println("Erro ao consultar programa: " + e);
+      throw failure("Erro ao consultar programa", e);
+    }
+  }
+
+  @PostMapping("/programa")
+  public ResponseEntity<Object> salvarPrograma(HttpServletRequest request) {
+    User user = auth.authenticate(request);
+    try {
+      Map<String, Object> body = body(request);
+      Integer minutos = null;
+      if (body.containsKey("tempoDisponivel") && body.get("tempoDisponivel") != null) {
+        double tempo = Js.toNumber(body.get("tempoDisponivel"));
+        if (tempo < 30 || tempo > 120) {
+          throw message(400, "Tempo disponível deve estar entre 30 e 120 minutos");
+        }
+        minutos = (int) tempo;
+      }
+      boolean atualizar = Boolean.TRUE.equals(body.get("atualizar"));
+      ProgramaSemanal.Programa programa =
+          ProgramaSemanal.planejar(user.getProfile(), seed(user), minutos);
+      Map<String, Document> salvas = programasSalvos(user, programa.chave);
+      Map<String, Boolean> estado = new LinkedHashMap<>();
+      for (Map.Entry<String, Document> entrada : salvas.entrySet()) {
+        estado.put(entrada.getKey(), Boolean.TRUE.equals(entrada.getValue().get("realizado")));
+      }
+      List<String> codigos = new ArrayList<>();
+      for (ProgramaSemanal.Sessao sessao : programa.sessoes) {
+        codigos.add(sessao.codigo);
+      }
+      ProgramaSemanal.AcaoPersistencia acao = ProgramaSemanal.decidir(estado, codigos, atualizar);
+      Date now = new Date();
+      for (String codigo : acao.criar) {
+        workouts.insert(documentoSessao(user, programa, sessaoPorCodigo(programa, codigo), now));
+      }
+      for (String codigo : acao.atualizar) {
+        Document existente = salvas.get(codigo);
+        if (existente == null || Boolean.TRUE.equals(existente.get("realizado"))) {
+          continue;
+        }
+        ProgramaSemanal.Sessao sessao = sessaoPorCodigo(programa, codigo);
+        existente.put("titulo", sessao.nome);
+        existente.put("exercicios", new ArrayList<Object>(sessao.exercicios));
+        existente.put("duracaoEstimadaMinutos", sessao.duracaoEstimadaMinutos);
+        existente.put("resumo", CoberturaMuscular.resumo(sessao.grupamento, sessao.exercicios));
+        existente.put("cobertura", CoberturaMuscular.calcular(sessao.grupamento, sessao.exercicios));
+        existente.put("observacoes", sessao.observacoes);
+        existente.put("programaRelacao", sessao.relacao);
+        existente.put("updatedAt", now);
+        workouts.replace(existente);
+      }
+      return json(
+          acao.criar.isEmpty() && acao.atualizar.isEmpty() ? 200 : 201,
+          Json.obj(
+              "success",
+              true,
+              "data",
+              respostaPrograma(user, programa, !acao.criar.isEmpty() || !acao.atualizar.isEmpty())));
+    } catch (ApiException e) {
+      throw e;
+    } catch (Exception e) {
+      System.err.println("Erro ao salvar programa: " + e);
+      throw failure("Erro ao salvar programa", e);
+    }
+  }
+
+  private static ProgramaSemanal.Sessao sessaoPorCodigo(ProgramaSemanal.Programa programa, String codigo) {
+    for (ProgramaSemanal.Sessao sessao : programa.sessoes) {
+      if (sessao.codigo.equals(codigo)) {
+        return sessao;
+      }
+    }
+    return programa.sessoes.get(0);
+  }
+
+  private Map<String, Document> programasSalvos(User user, String chave) {
+    Map<String, Document> salvas = new LinkedHashMap<>();
+    for (Document documento : workouts.findByPrograma(user.getId(), chave)) {
+      Object codigo = documento.get("programaCodigo");
+      if (codigo != null) {
+        salvas.put(String.valueOf(codigo), documento);
+      }
+    }
+    return salvas;
+  }
+
+  private Document documentoSessao(
+      User user, ProgramaSemanal.Programa programa, ProgramaSemanal.Sessao sessao, Date now) {
+    return new Document("_id", new ObjectId())
+        .append("user", user.getId())
+        .append("titulo", sessao.nome)
+        .append("grupamento", sessao.grupamento)
+        .append("objetivo", WorkoutGenerator.rotuloModo(programa.modo) + ". " + programa.rotulo)
+        .append("modo", programa.modo)
+        .append("tipoDivisao", "PROGRAMA")
+        .append("letraTreino", null)
+        .append("variante", null)
+        .append("tempoDisponivel", sessao.minutos)
+        .append("duracaoEstimadaMinutos", sessao.duracaoEstimadaMinutos)
+        .append("duracaoObservacao", "Estimativa. A duração real depende do ritmo de execução.")
+        .append("exercicios", new ArrayList<Object>(sessao.exercicios))
+        .append("resumo", CoberturaMuscular.resumo(sessao.grupamento, sessao.exercicios))
+        .append("cobertura", CoberturaMuscular.calcular(sessao.grupamento, sessao.exercicios))
+        .append("observacoes", sessao.observacoes)
+        .append("realizado", false)
+        .append("programaChave", programa.chave)
+        .append("programaCodigo", sessao.codigo)
+        .append("programaOrdem", sessao.ordem)
+        .append("programaEstrategia", programa.estrategia)
+        .append("programaFoco", sessao.foco)
+        .append("programaRelacao", sessao.relacao)
+        .append("createdAt", now)
+        .append("updatedAt", now)
+        .append("__v", 0);
+  }
+
+  private Map<String, Object> respostaPrograma(
+      User user, ProgramaSemanal.Programa programa, boolean gravadoAgora) {
+    Map<String, Document> salvas = programasSalvos(user, programa.chave);
+    List<Map<String, Object>> sessoes = new ArrayList<>();
+    boolean completo = true;
+    for (ProgramaSemanal.Sessao sessao : programa.sessoes) {
+      Document salva = salvas.get(sessao.codigo);
+      if (salva == null) {
+        completo = false;
+      }
+      List<Map<String, Object>> exercicios = salva == null ? sessao.exercicios : itens(salva);
+      Map<String, Object> item = new LinkedHashMap<>();
+      item.put("codigo", sessao.codigo);
+      item.put("ordem", sessao.ordem);
+      item.put("nome", salva == null ? sessao.nome : salva.get("titulo"));
+      item.put("grupamento", sessao.grupamento);
+      item.put("foco", sessao.foco);
+      item.put("relacao", sessao.relacao);
+      item.put("grupos", sessao.grupos);
+      item.put("tempoDisponivel", sessao.minutos);
+      item.put(
+          "duracaoEstimadaMinutos",
+          salva == null ? sessao.duracaoEstimadaMinutos : salva.get("duracaoEstimadaMinutos"));
+      item.put("exercicios", exercicios);
+      item.put("problemas", sessao.problemas);
+      item.put("treinoId", salva == null ? null : salva.getObjectId("_id").toHexString());
+      item.put("realizado", salva != null && Boolean.TRUE.equals(salva.get("realizado")));
+      sessoes.add(item);
+    }
+    List<Map<String, Object>> volume = new ArrayList<>();
+    Set<String> musculos = new LinkedHashSet<>();
+    musculos.addAll(programa.volumeDireto.keySet());
+    musculos.addAll(programa.volumeIndireto.keySet());
+    for (String codigo : musculos) {
+      Map<String, Object> linha = new LinkedHashMap<>();
+      linha.put("codigo", codigo);
+      linha.put("rotulo", ExerciseAnatomy.rotuloMusculo(codigo));
+      linha.put("diretas", CoberturaMuscular.arredondar(programa.volumeDireto.getOrDefault(codigo, 0.0)));
+      linha.put("indiretas", CoberturaMuscular.arredondar(programa.volumeIndireto.getOrDefault(codigo, 0.0)));
+      volume.add(linha);
+    }
+    Map<String, Object> data = new LinkedHashMap<>();
+    data.put("dias", programa.dias);
+    data.put("minutos", programa.minutos);
+    data.put("origemDias", programa.origemDias);
+    data.put("origemMinutos", programa.origemMinutos);
+    data.put("modo", programa.modo);
+    data.put("rank", programa.rank);
+    data.put("estrategia", programa.estrategia);
+    data.put("rotulo", programa.rotulo);
+    data.put("chave", programa.chave);
+    data.put("salvo", completo);
+    data.put("gravadoAgora", gravadoAgora);
+    data.put("observacoes", programa.observacoes);
+    data.put("volume", volume);
+    data.put("sessoes", sessoes);
+    return data;
   }
 
   @GetMapping("/my-workouts")
@@ -292,6 +478,9 @@ public class WorkoutController extends BaseController {
 
   @GetMapping("/{id}")
   public ResponseEntity<Object> get(@PathVariable("id") String id, HttpServletRequest request) {
+    if ("programa".equals(id)) {
+      return programa(request);
+    }
     User user = auth.authenticate(request);
 
     try {
@@ -562,13 +751,14 @@ public class WorkoutController extends BaseController {
         throw message(404, "Exercício não encontrado neste treino");
       }
       completarPadrao(atual);
+      PrescricaoPerfil.Configuracao cfg = prescricao(user);
       List<Map<String, Object>> opcoes =
           SessionPlanner.alternativas(
               atual,
               itens,
               tempoDe(workout),
-              WorkoutGenerator.nivelRank(nivel(user)),
-              WorkoutGenerator.modoObjetivo(objetivos(user)));
+              cfg.rank,
+              cfg.modo);
       boolean executado =
           ExecucaoRegras.temSerieConcluida(execucoes.find(user.getId(), workout.getObjectId("_id")), uid);
       return ok(Json.obj("success", true, "data", opcoes, "temSeriesConcluidas", executado));
@@ -615,8 +805,9 @@ public class WorkoutController extends BaseController {
                 "requerConfirmacao",
                 true));
       }
-      int experiencia = WorkoutGenerator.nivelRank(nivel(user));
-      String modo = WorkoutGenerator.modoObjetivo(objetivos(user));
+      PrescricaoPerfil.Configuracao cfg = prescricao(user);
+      int experiencia = cfg.rank;
+      String modo = cfg.modo;
       double tempo = tempoDe(workout);
       Map<String, Object> escolhida = null;
       for (Map<String, Object> opcao : SessionPlanner.alternativas(atual, itens, tempo, experiencia, modo)) {
@@ -680,14 +871,15 @@ public class WorkoutController extends BaseController {
       if (!"ABC".equals(tipo) && !"ABCD".equals(tipo)) {
         throw message(400, "A visão do ciclo está disponível para treinos ABC e ABCD");
       }
+      PrescricaoPerfil.Configuracao cfg = prescricao(user);
       Map<String, Object> ciclo =
           WorkoutGenerator.ciclo(
               (String) tipo,
               workout.getString("letraTreino"),
               itens(workout),
               tempoDe(workout),
-              nivel(user),
-              objetivos(user),
+              cfg.rank,
+              cfg.modo,
               seed(user));
       return ok(Json.obj("success", true, "data", ciclo));
     } catch (ApiException e) {

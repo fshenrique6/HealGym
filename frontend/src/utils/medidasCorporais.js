@@ -5,13 +5,8 @@ export const CAMPOS = [
     grupo: 'principais',
     min: 40,
     max: 200,
-    passos: [
-      'Fique em pé, com os pés juntos e os braços ao lado do corpo.',
-      'Use uma fita métrica flexível, na horizontal, sem comprimir a pele.',
-      'Coloque a fita no meio do caminho entre a última costela palpável e o topo do osso do quadril.',
-      'Meça no fim de uma expiração normal. Repita sempre esse mesmo ponto.',
-    ],
-    fonte: 'Organização Mundial da Saúde. Medição da circunferência da cintura.',
+    texto:
+      'Em pé, meça no meio entre a última costela e o osso do quadril, no fim de uma expiração, sem apertar a fita.',
   },
   {
     id: 'quadril',
@@ -19,13 +14,7 @@ export const CAMPOS = [
     grupo: 'principais',
     min: 50,
     max: 200,
-    passos: [
-      'Fique em pé, com os pés juntos e o peso distribuído.',
-      'Passe a fita na maior circunferência dos glúteos, paralela ao chão.',
-      'A fita deve encostar sem comprimir a pele.',
-      'Use roupa leve e o mesmo procedimento em todas as medições.',
-    ],
-    fonte: 'Organização Mundial da Saúde. Medição da circunferência do quadril.',
+    texto: 'Em pé, com os pés juntos, meça a parte mais larga dos glúteos, com a fita paralela ao chão.',
   },
   {
     id: 'peito',
@@ -33,12 +22,7 @@ export const CAMPOS = [
     grupo: 'adicionais',
     min: 50,
     max: 200,
-    passos: [
-      'Fique em pé, com os braços relaxados ao lado do corpo.',
-      'Passe a fita na horizontal, na altura do mamilo.',
-      'Meça no fim de uma expiração normal, sem comprimir a pele.',
-    ],
-    fonte: 'Circunferência do tórax no nível mesoesternal.',
+    texto: 'Em pé, meça na altura do mamilo, no fim de uma expiração, sem apertar a fita.',
   },
   {
     id: 'braco',
@@ -46,12 +30,7 @@ export const CAMPOS = [
     grupo: 'adicionais',
     min: 15,
     max: 70,
-    passos: [
-      'Deixe o braço solto e o músculo relaxado.',
-      'Marque o meio entre a ponta do ombro e a ponta do cotovelo.',
-      'Passe a fita perpendicular ao braço, sem comprimir a pele.',
-    ],
-    fonte: 'Circunferência do braço relaxado, no ponto médio.',
+    texto: 'Com o braço relaxado, meça o meio entre o ombro e o cotovelo, sem apertar a fita.',
   },
   {
     id: 'coxa',
@@ -59,12 +38,7 @@ export const CAMPOS = [
     grupo: 'adicionais',
     min: 25,
     max: 120,
-    passos: [
-      'Fique em pé, com o peso distribuído.',
-      'Meça o meio entre a prega da virilha e a borda superior da patela.',
-      'Mantenha a fita horizontal, sem comprimir a pele.',
-    ],
-    fonte: 'Circunferência da coxa no ponto médio.',
+    texto: 'Em pé, meça o meio da coxa, entre a virilha e o joelho, com a fita na horizontal.',
   },
   {
     id: 'abdomen',
@@ -72,12 +46,7 @@ export const CAMPOS = [
     grupo: 'adicionais',
     min: 40,
     max: 200,
-    passos: [
-      'Esta medida não substitui a cintura.',
-      'Fique em pé e passe a fita na horizontal, na altura do umbigo.',
-      'Meça no fim de uma expiração normal, sem comprimir a pele.',
-    ],
-    fonte: 'Circunferência abdominal umbilical, diferente do ponto da cintura usado pela OMS.',
+    texto: 'Meça na altura do umbigo, no fim de uma expiração. Esta medida não substitui a cintura.',
   },
   {
     id: 'panturrilha',
@@ -85,12 +54,7 @@ export const CAMPOS = [
     grupo: 'adicionais',
     min: 15,
     max: 70,
-    passos: [
-      'Fique em pé, com o peso distribuído.',
-      'Passe a fita na maior circunferência da panturrilha.',
-      'Mantenha a fita horizontal, sem comprimir a pele.',
-    ],
-    fonte: 'Maior circunferência da panturrilha.',
+    texto: 'Em pé, meça a parte mais larga da panturrilha, sem apertar a fita.',
   },
 ];
 

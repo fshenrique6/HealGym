@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import styled from 'styled-components';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
@@ -14,6 +15,7 @@ import {
   FiChevronUp,
   FiLayers,
   FiTarget,
+  FiAlertCircle,
 } from 'react-icons/fi';
 import api from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
@@ -48,7 +50,6 @@ import {
   MetaTag,
   TreinoObjetivo,
   ActionButtons,
-  ActionButton,
   RealizadoBadge,
   ExerciciosList,
   ExercicioCard,
@@ -56,7 +57,6 @@ import {
   ExercicioInfo,
   ExercicioDemo,
   DemoVideo,
-  DemoIndisponivel,
   ExercicioNome,
   PorcaoMuscular,
   Tecnica,
@@ -73,15 +73,8 @@ import {
   SeriesProgressPercentual,
   SeriesProgressBar,
   SeriesProgressFill,
-  ModalOverlay,
-  ModalContainer,
-  ModalHeader,
-  ModalTitulo,
-  ModalBody,
-  ModalMensagem,
-  ModalFooter,
-  ModalButton,
 } from './treinoEstilos';
+import DialogoAcao from './DialogoAcao';
 import {
   FichaMeta,
   Observacoes,
@@ -122,6 +115,7 @@ const TreinoGeradoPage = () => {
   const [salvamento, setSalvamento] = useState('');
   const [progresso, setProgresso] = useState({});
   const [tecnicaAberta, setTecnicaAberta] = useState({});
+  const [analiseAberta, setAnaliseAberta] = useState(false);
   const [troca, setTroca] = useState(null);
   const [sessaoAndamento, setSessaoAndamento] = useState(false);
   const [indoExecucao, setIndoExecucao] = useState(false);
@@ -235,29 +229,13 @@ const TreinoGeradoPage = () => {
     };
   }, [id, carregarProgresso]);
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key !== 'Escape') return;
-      if (modalAberto) {
-        if (modalConfig.tipo === 'alert') {
-          modalConfig.onConfirm();
-        } else {
-          modalConfig.onCancel();
-        }
-      } else if (troca && !troca.enviando) {
-        setTroca(null);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [modalAberto, modalConfig, troca]);
-
-  const mostrarConfirm = useCallback((titulo, mensagem, onConfirm) => {
+  const mostrarConfirm = useCallback((titulo, mensagem, onConfirm, tipo = 'confirmar', rotuloConfirmar = 'Confirmar', linhaUnica = false) => {
     setModalConfig({
-      tipo: 'confirm',
+      tipo,
       titulo,
       mensagem,
+      rotuloConfirmar,
+      linhaUnica,
       onConfirm,
       onCancel: () => setModalAberto(false),
     });
@@ -300,6 +278,10 @@ const TreinoGeradoPage = () => {
     filaSalvamentoRef.current = envio.catch(() => false);
     return envio;
   }, []);
+
+  const voltarAosTreinos = () => {
+    navigate('/treino');
+  };
 
   const iniciarTreino = useCallback(async () => {
     if (!treino || indoExecucao) return;
@@ -344,12 +326,15 @@ const TreinoGeradoPage = () => {
 
     if (totalConcluidas === 0) {
       mostrarConfirm(
-        'Marcar como Realizado',
+        'Marcar como realizado',
         'Nenhuma série foi marcada como concluída. Deseja marcar o treino como realizado mesmo assim?',
         async () => {
           setModalAberto(false);
           await concluir();
         },
+        'confirmar',
+        'Confirmar',
+        true,
       );
       return;
     }
@@ -358,7 +343,7 @@ const TreinoGeradoPage = () => {
 
   const handleDeletarTreino = async () => {
     mostrarConfirm(
-      'Deletar Treino',
+      'Excluir treino',
       'Deseja realmente deletar este treino? Esta ação não pode ser desfeita.',
       async () => {
         try {
@@ -378,6 +363,8 @@ const TreinoGeradoPage = () => {
           mostrarAlerta('Erro', 'Erro ao deletar treino. Tente novamente.');
         }
       },
+      'destrutivo',
+      'Excluir treino',
     );
   };
 
@@ -468,151 +455,71 @@ const TreinoGeradoPage = () => {
 
   return (
     <Container className="custom-scroll">
-      <AnimatePresence>
-        {modalAberto && (
-          <ModalOverlay
-            as={motion.div}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() =>
-              modalConfig.tipo === 'alert' ? modalConfig.onConfirm() : modalConfig.onCancel()
-            }
-          >
-            <ModalContainer
-              as={motion.div}
-              initial={{ opacity: 0, scale: 0.8, y: -50 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.8, y: -50 }}
-              transition={{ type: 'spring', duration: 0.5 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ModalHeader>
-                <ModalTitulo>{modalConfig.titulo}</ModalTitulo>
-              </ModalHeader>
-              <ModalBody>
-                <ModalMensagem>{modalConfig.mensagem}</ModalMensagem>
-              </ModalBody>
-              <ModalFooter>
-                {modalConfig.tipo === 'confirm' ? (
-                  <>
-                    <ModalButton
-                      color="#6c757d"
-                      onClick={modalConfig.onCancel}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      Cancelar
-                    </ModalButton>
-                    <ModalButton
-                      color="var(--accent)"
-                      onClick={modalConfig.onConfirm}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      Confirmar
-                    </ModalButton>
-                  </>
-                ) : (
-                  <ModalButton
-                    color="var(--accent)"
-                    onClick={modalConfig.onConfirm}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    style={{ width: '100%' }}
-                  >
-                    OK
-                  </ModalButton>
-                )}
-              </ModalFooter>
-            </ModalContainer>
-          </ModalOverlay>
-        )}
-      </AnimatePresence>
+      <DialogoAcao
+        aberto={modalAberto}
+        titulo={modalConfig.titulo}
+        mensagem={modalConfig.mensagem}
+        icone={modalConfig.tipo === 'destrutivo' ? <FiTrash2 /> : <FiAlertCircle />}
+        tipo={modalConfig.tipo === 'alert' ? 'alerta' : modalConfig.tipo || 'confirmar'}
+        rotuloConfirmar={
+          modalConfig.tipo === 'alert' ? 'OK' : modalConfig.rotuloConfirmar || 'Confirmar'
+        }
+        linhaUnica={Boolean(modalConfig.linhaUnica)}
+        onConfirmar={modalConfig.onConfirm}
+        onCancelar={modalConfig.onCancel || modalConfig.onConfirm}
+      />
 
-      <AnimatePresence>
-        {troca && !modalAberto && (
-          <ModalOverlay
-            as={motion.div}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => !troca.enviando && setTroca(null)}
-          >
-            <ModalContainer
-              as={motion.div}
-              initial={{ opacity: 0, scale: 0.8, y: -50 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.8, y: -50 }}
-              transition={{ type: 'spring', duration: 0.5 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ModalHeader>
-                <ModalTitulo>Trocar Exercício</ModalTitulo>
-              </ModalHeader>
-              <ModalBody>
-                {troca.confirmar ? (
-                  <ModalMensagem>
-                    {troca.nome} já tem séries concluídas. Ao trocar por {troca.confirmar.nome}, os
-                    registros feitos continuam no histórico, e as séries do novo exercício começam
-                    em branco.
-                  </ModalMensagem>
-                ) : troca.carregando ? (
-                  <ModalMensagem>Buscando alternativas equivalentes…</ModalMensagem>
-                ) : troca.erro ? (
-                  <ModalMensagem>{troca.erro}</ModalMensagem>
-                ) : troca.opcoes.length === 0 ? (
-                  <ModalMensagem>
-                    Não há alternativa equivalente para {troca.nome} que caiba na duração escolhida.
-                  </ModalMensagem>
-                ) : (
-                  <AlternativasLista>
-                    <ModalMensagem>Alternativas equivalentes para {troca.nome}:</ModalMensagem>
-                    {troca.opcoes.map((opcao) => (
-                      <AlternativaItem
-                        key={opcao.exercicioId}
-                        type="button"
-                        disabled={troca.enviando}
-                        onClick={() => executarTroca(opcao, false)}
-                      >
-                        {opcao.nome}
-                        <span>
-                          {opcao.padraoRotulo} · {opcao.equipamentoRotulo} · {opcao.series} séries ·
-                          sessão estimada em {opcao.duracaoEstimadaMinutos} min
-                        </span>
-                      </AlternativaItem>
-                    ))}
-                  </AlternativasLista>
-                )}
-              </ModalBody>
-              <ModalFooter>
-                <ModalButton
-                  color="#6c757d"
-                  onClick={() =>
-                    troca.confirmar ? setTroca({ ...troca, confirmar: null }) : setTroca(null)
-                  }
-                  disabled={troca.enviando}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  {troca.confirmar ? 'Voltar' : 'Cancelar'}
-                </ModalButton>
-                {troca.confirmar && (
-                  <ModalButton
-                    color="var(--accent)"
-                    onClick={() => executarTroca(troca.confirmar, true)}
-                    disabled={troca.enviando}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    {troca.enviando ? 'Trocando…' : 'Confirmar troca'}
-                  </ModalButton>
-                )}
-              </ModalFooter>
-            </ModalContainer>
-          </ModalOverlay>
+      <DialogoAcao
+        aberto={Boolean(troca) && !modalAberto}
+        titulo="Trocar exercício"
+        subtitulo={troca?.nome}
+        icone={<FiRepeat />}
+        tipo={troca?.confirmar ? 'confirmar' : 'painel'}
+        mensagem={
+          troca?.confirmar
+            ? `${troca.nome} já tem séries concluídas. Ao trocar por ${troca.confirmar.nome}, os registros feitos continuam no histórico, e as séries do novo exercício começam em branco.`
+            : troca?.carregando
+              ? 'Buscando alternativas equivalentes…'
+              : troca?.erro
+                ? troca.erro
+                : troca && troca.opcoes.length === 0
+                  ? `Não há alternativa equivalente para ${troca.nome} que caiba na duração escolhida.`
+                  : troca
+                    ? `Alternativas equivalentes para ${troca.nome}:`
+                    : ''
+        }
+        rotuloCancelar={troca?.confirmar ? 'Voltar' : 'Cancelar'}
+        rotuloConfirmar={troca?.enviando ? 'Trocando…' : 'Confirmar troca'}
+        confirmarDesabilitado={Boolean(troca?.enviando)}
+        onCancelar={() => {
+          if (troca?.enviando) return;
+          if (troca?.confirmar) {
+            setTroca({ ...troca, confirmar: null });
+            return;
+          }
+          setTroca(null);
+        }}
+        onConfirmar={() => troca?.confirmar && executarTroca(troca.confirmar, true)}
+      >
+        {troca && !troca.confirmar && !troca.carregando && !troca.erro && troca.opcoes.length > 0 && (
+          <AlternativasLista>
+            {troca.opcoes.map((opcao) => (
+              <AlternativaItem
+                key={opcao.exercicioId}
+                type="button"
+                disabled={troca.enviando}
+                onClick={() => executarTroca(opcao, false)}
+              >
+                {opcao.nome}
+                <span>
+                  {opcao.padraoRotulo} · {opcao.equipamentoRotulo} · {opcao.series} séries · sessão
+                  estimada em {opcao.duracaoEstimadaMinutos} min
+                </span>
+              </AlternativaItem>
+            ))}
+          </AlternativasLista>
         )}
-      </AnimatePresence>
+      </DialogoAcao>
 
       <Header>
         <motion.div
@@ -628,7 +535,7 @@ const TreinoGeradoPage = () => {
           transition={{ duration: 0.6 }}
         >
           <BackButton
-            onClick={() => navigate('/treino')}
+            onClick={voltarAosTreinos}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -715,15 +622,15 @@ const TreinoGeradoPage = () => {
 
                 <ActionButtons>
                   {!treino.realizado && (
-                    <ActionButton color="#4ecdc4" onClick={handleMarcarRealizado}>
+                    <BotaoDiscretoFicha type="button" onClick={handleMarcarRealizado}>
                       <FiCheck />
-                      Marcar como Realizado
-                    </ActionButton>
+                      Marcar como realizado
+                    </BotaoDiscretoFicha>
                   )}
-                  <ActionButton color="#ff6b6b" onClick={handleDeletarTreino}>
+                  <BotaoPerigo type="button" onClick={handleDeletarTreino}>
                     <FiTrash2 />
-                    Deletar
-                  </ActionButton>
+                    Excluir treino
+                  </BotaoPerigo>
                 </ActionButtons>
 
                 {!treino.realizado && (erroExecucao || salvamento) && (
@@ -784,23 +691,18 @@ const TreinoGeradoPage = () => {
                               </div>
                             </ExercicioHeader>
 
+                            {exercicio.videoUrl && (
                             <ExercicioDemo>
-                              {exercicio.videoUrl ? (
-                                <DemoVideo
-                                  controls
-                                  preload="none"
-                                  playsInline
-                                  poster={exercicio.videoThumbnailUrl || undefined}
-                                  src={exercicio.videoUrl}
-                                  aria-label={`Demonstração de ${exercicio.nome}`}
-                                />
-                              ) : (
-                                <DemoIndisponivel>
-                                  <FiPlay aria-hidden="true" />
-                                  <span>Demonstração indisponível</span>
-                                </DemoIndisponivel>
-                              )}
+                              <DemoVideo
+                                controls
+                                preload="none"
+                                playsInline
+                                poster={exercicio.videoThumbnailUrl || undefined}
+                                src={exercicio.videoUrl}
+                                aria-label={`Demonstração de ${exercicio.nome}`}
+                              />
                             </ExercicioDemo>
+                            )}
 
                             <PrescricaoLinha>
                               <span>
@@ -968,14 +870,25 @@ const TreinoGeradoPage = () => {
                 ))}
               </ExerciciosList>
 
-              {treino.cobertura ? (
-                <CoberturaTreino treino={treino} />
-              ) : (
-                <ResumoSection>
-                  <ResumoTitulo>Resumo de Cobertura Muscular</ResumoTitulo>
-                  <ResumoTexto>{treino.resumo}</ResumoTexto>
-                </ResumoSection>
-              )}
+              <Analise>
+                <BotaoAnalise
+                  type="button"
+                  aria-expanded={analiseAberta}
+                  onClick={() => setAnaliseAberta((aberta) => !aberta)}
+                >
+                  {analiseAberta ? <FiChevronUp /> : <FiChevronDown />}
+                  Análise do treino
+                </BotaoAnalise>
+                {analiseAberta &&
+                  (treino.cobertura ? (
+                    <CoberturaTreino treino={treino} />
+                  ) : (
+                    <ResumoSection>
+                      <ResumoTitulo>Resumo de cobertura muscular</ResumoTitulo>
+                      <ResumoTexto>{treino.resumo}</ResumoTexto>
+                    </ResumoSection>
+                  ))}
+              </Analise>
             </TreinoDisplay>
           </motion.div>
         )}
@@ -990,5 +903,64 @@ const ExerciciosBloco = ({ bloco, renderizar }) => (
     {bloco.itens.map((item) => renderizar(item))}
   </>
 );
+
+const BotaoDiscretoFicha = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0.45rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: 'Cinzel', serif;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+`;
+
+const BotaoPerigo = styled(BotaoDiscretoFicha)`
+  color: #e8b4b4;
+  border-color: rgba(141, 58, 58, 0.75);
+`;
+
+const Analise = styled.section`
+  margin-top: 1.25rem;
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 0.85rem 1rem 1rem;
+`;
+
+const BotaoAnalise = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  background: transparent;
+  color: var(--white);
+  font-family: 'Cinzel', serif;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+  text-transform: none;
+  text-align: left;
+  padding: 0.35rem 0;
+
+  svg {
+    color: var(--accent);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+`;
 
 export default TreinoGeradoPage;

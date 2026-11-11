@@ -2,6 +2,7 @@ package com.healgym.model;
 
 import com.healgym.util.Js;
 import com.healgym.util.Json;
+import com.healgym.validation.TrainingProfile;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -35,6 +36,11 @@ public class User {
     public String bodyType;
     public List<String> goals = new ArrayList<>();
     public String fitnessLevel;
+    public String trainingGoal;
+    public String trainingExperience;
+    public String recentFrequency;
+    public Integer availableDays;
+    public Integer preferredSessionMinutes;
 
     public static Profile fromDocument(Document document) {
       Profile profile = new Profile();
@@ -49,6 +55,12 @@ public class User {
       profile.weight = number(document.get("weight"));
       profile.bodyType = document.getString("bodyType");
       profile.fitnessLevel = document.getString("fitnessLevel");
+      profile.trainingGoal = document.getString("trainingGoal");
+      profile.trainingExperience = document.getString("trainingExperience");
+      profile.recentFrequency = document.getString("recentFrequency");
+      profile.availableDays = TrainingProfile.inteiro(document.get("availableDays"));
+      profile.preferredSessionMinutes =
+          TrainingProfile.inteiro(document.get("preferredSessionMinutes"));
 
       Object goals = document.get("goals");
       if (goals instanceof List) {
@@ -72,6 +84,11 @@ public class User {
       putIfPresent(document, "bodyType", bodyType);
       document.put("goals", new ArrayList<>(goals));
       putIfPresent(document, "fitnessLevel", fitnessLevel);
+      putIfPresent(document, "trainingGoal", trainingGoal);
+      putIfPresent(document, "trainingExperience", trainingExperience);
+      putIfPresent(document, "recentFrequency", recentFrequency);
+      putIfPresent(document, "availableDays", availableDays);
+      putIfPresent(document, "preferredSessionMinutes", preferredSessionMinutes);
       return document;
     }
   }
@@ -242,6 +259,10 @@ public class User {
           "`"
               + profile.fitnessLevel
               + "` is not a valid enum value for path `profile.fitnessLevel`.");
+    }
+    String treino = TrainingProfile.erroDePersistencia(profile);
+    if (treino != null) {
+      throw new ValidationFailure(treino);
     }
   }
 
