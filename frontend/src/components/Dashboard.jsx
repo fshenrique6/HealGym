@@ -383,6 +383,7 @@ const Dashboard = () => {
                       setEditingField={setEditingField}
                     />
                   </InfoGrid>
+                  <PerfilTreinoCard />
                   <MedidasActionRow>
                     <MedidasAction
                       ref={botaoMedidasRef}
@@ -405,7 +406,6 @@ const Dashboard = () => {
                       </MedidasChamada>
                     )}
                   </MedidasActionRow>
-                  <PerfilTreinoCard />
                 </>
               ) : (
                 <EmptyState>
@@ -461,8 +461,7 @@ const Dashboard = () => {
                 <WeeklyCalendar>
                   <CalendarTitle>Cronograma Semanal</CalendarTitle>
                   <CalendarSubtitle>
-                    A programação fica em <strong>Treinos</strong>, como Sessão 1, Sessão 2 e assim
-                    por diante. Este calendário só marca o dia em que um treino foi realizado.
+                  Sua programação de treinos é personalizada e pode ser adaptada à sua rotina.
                   </CalendarSubtitle>
                   <CalendarActionRow>
                     <CalendarAction
@@ -767,7 +766,7 @@ const InfoGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
-  margin: 1.5rem 0;
+  margin: 1.5rem 0 0;
 `;
 
 const InfoItem = styled.div`
@@ -801,7 +800,7 @@ const MedidasActionRow = styled.div`
   flex-direction: column;
   align-items: center;
   gap: 0.45rem;
-  margin-top: 0.25rem;
+  margin-top: 1rem;
 `;
 
 const MedidasAction = styled(motion.button)`
@@ -1191,6 +1190,7 @@ const CalendarTitle = styled.h2`
   background: var(--gold-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  cursor: default;
 `;
 
 const CalendarSubtitle = styled.p`
@@ -1202,6 +1202,7 @@ const CalendarSubtitle = styled.p`
   margin: 0 auto 20px auto;
   max-width: 640px;
   text-align: center;
+  cursor: default;
 `;
 
 const CalendarActionRow = styled.div`
