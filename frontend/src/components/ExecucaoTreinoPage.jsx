@@ -1,9 +1,10 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FiArrowLeft, FiCheck, FiClock, FiPause, FiPlay } from 'react-icons/fi';
+import { FiArrowLeft, FiCheck, FiClock, FiPause, FiPlay, FiAlertCircle } from 'react-icons/fi';
 import api from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
+import DialogoAcao from './DialogoAcao';
 import {
   contarConcluidas,
   descansoPrescrito,
@@ -810,24 +811,19 @@ const ExecucaoTreinoPage = () => {
                   </BotaoConcluir>
                 )}
                 {erroAcao && <AvisoExecucao>{erroAcao}</AvisoExecucao>}
-                {confirmarPular && (
-                  <AvisoExecucao>
-                    Pular {exercicio.nome}? As séries dele continuam pendentes e entram no resumo.
-                    <AcoesExecucao>
-                      <BotaoAcao type="button" onClick={pularExercicio} whileHover={HOVER_BOTAO} whileTap={TOQUE_BOTAO}>
-                        Confirmar
-                      </BotaoAcao>
-                      <BotaoAcao
-                        type="button"
-                        onClick={() => setConfirmarPular(false)}
-                        whileHover={HOVER_BOTAO}
-                        whileTap={TOQUE_BOTAO}
-                      >
-                        Cancelar
-                      </BotaoAcao>
-                    </AcoesExecucao>
-                  </AvisoExecucao>
-                )}
+                <DialogoAcao
+                  aberto={confirmarPular}
+                  titulo="Pular exercício"
+                  mensagem={
+                    exercicio
+                      ? `Pular ${exercicio.nome}? As séries dele continuam pendentes e entram no resumo.`
+                      : ''
+                  }
+                  icone={<FiAlertCircle />}
+                  tipo="confirmar"
+                  onConfirmar={pularExercicio}
+                  onCancelar={() => setConfirmarPular(false)}
+                />
                 {seguinte && !pulados.includes(uidDoExercicio(seguinte, indice + 1)) && (
                   <ProximoDiscreto>Em seguida: {seguinte.nome}</ProximoDiscreto>
                 )}
@@ -1044,11 +1040,17 @@ function ResumoSessao({
       {nomesPulados.length > 0 && (
         <ProximoDiscreto>Exercícios pulados: {nomesPulados.join(', ')}</ProximoDiscreto>
       )}
-      {confirmarFim && (
-        <AvisoExecucao>
-          Ficam {pendentes} séries pendentes. A sessão será concluída com esse resultado, sem marcar o que não foi feito.
-        </AvisoExecucao>
-      )}
+      <DialogoAcao
+        aberto={confirmarFim}
+        titulo="Finalizar treino"
+        mensagem={`Ficam ${pendentes} séries pendentes. A sessão será concluída com esse resultado, sem marcar o que não foi feito.`}
+        icone={<FiAlertCircle />}
+        tipo="confirmar"
+        rotuloConfirmar="Finalizar treino"
+        confirmarDesabilitado={processando}
+        onConfirmar={onFinalizar}
+        onCancelar={onCancelarConfirmacao}
+      />
       {!treino.realizado && (
         <BotaoConcluir
           type="button"
@@ -1061,11 +1063,6 @@ function ResumoSessao({
         </BotaoConcluir>
       )}
       <AcoesExecucao>
-        {confirmarFim && (
-          <BotaoAcao type="button" onClick={onCancelarConfirmacao} whileHover={HOVER_BOTAO} whileTap={TOQUE_BOTAO}>
-            Cancelar
-          </BotaoAcao>
-        )}
         {!treino.realizado && pendentes > 0 && (
           <BotaoAcao type="button" onClick={onContinuar} whileHover={HOVER_BOTAO} whileTap={TOQUE_BOTAO}>
             Continuar séries pendentes

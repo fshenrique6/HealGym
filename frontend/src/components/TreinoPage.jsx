@@ -2,26 +2,20 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { FiArrowLeft, FiActivity, FiClock, FiTrash2, FiCheck, FiZap } from 'react-icons/fi';
+import { FiArrowLeft, FiActivity, FiClock, FiCheck, FiZap, FiAlertCircle, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import api from '../services/api';
+import { ROTULO_ESTADO, classificarFicha, separarFichas } from '../utils/fichasTreino';
 import {
   Container,
   Header,
   Logo,
   BackButton,
   MainContent,
-  ModalOverlay,
-  ModalContainer,
-  ModalHeader,
-  ModalTitulo,
-  ModalBody,
-  ModalMensagem,
-  ModalFooter,
-  ModalButton,
 } from './treinoEstilos';
 import { TIPOS_DIVISAO } from '../utils/treinoDivisao';
 import ProgramaSemanalPainel from './ProgramaSemanalPainel';
 import LoadingSpinner from './LoadingSpinner';
+import DialogoAcao from './DialogoAcao';
 
 const TreinoPage = () => {
   const navigate = useNavigate();
@@ -32,6 +26,8 @@ const TreinoPage = () => {
   const [loading, setLoading] = useState(false);
   const [historico, setHistorico] = useState([]);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
+  const [avulsaAberta, setAvulsaAberta] = useState(false);
+  const [historicoAberto, setHistoricoAberto] = useState(false);
 
   const [modalAberto, setModalAberto] = useState(false);
   const [modalConfig, setModalConfig] = useState({
@@ -54,44 +50,32 @@ const TreinoPage = () => {
     carregarHistorico();
   }, []);
 
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && modalAberto) {
-        if (modalConfig.tipo === 'alert') {
-          modalConfig.onConfirm();
-        } else {
-          modalConfig.onCancel();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [modalAberto, modalConfig]);
-
   const carregarHistorico = async () => {
     setLoadingHistorico(true);
     try {
       const response = await api.getMyWorkouts();
       if (response.success) {
-        setHistorico(response.data);
+        const lista = Array.isArray(response.data) ? response.data : [];
+        const classificados = [];
+        for (const treino of lista) {
+          if (treino.realizado) {
+            classificados.push(classificarFicha(treino));
+            continue;
+          }
+          try {
+            const execucao = await api.getWorkoutExecution(treino._id);
+            classificados.push(classificarFicha(treino, { ok: true, data: execucao?.data }));
+          } catch {
+            classificados.push(classificarFicha(treino, { ok: false }));
+          }
+        }
+        setHistorico(classificados);
       }
     } catch {
     } finally {
       setLoadingHistorico(false);
     }
   };
-
-  const mostrarConfirm = useCallback((titulo, mensagem, onConfirm) => {
-    setModalConfig({
-      tipo: 'confirm',
-      titulo,
-      mensagem,
-      onConfirm,
-      onCancel: () => setModalAberto(false),
-    });
-    setModalAberto(true);
-  }, []);
 
   const mostrarAlerta = useCallback((titulo, mensagem) => {
     setModalConfig({
@@ -145,89 +129,22 @@ const TreinoPage = () => {
     }
   };
 
-  const handleLimparHistorico = async () => {
-    mostrarConfirm(
-      'Limpar Histórico',
-      'Deseja realmente limpar todo o histórico de treinos? Todos os treinos serão permanentemente deletados.',
-      async () => {
-        try {
-          const response = await api.clearWorkoutHistory();
-          if (response.success) {
-            setHistorico([]);
-            setModalAberto(false);
-            mostrarAlerta('Sucesso', 'Histórico limpo com sucesso!');
-          }
-        } catch {
-          setModalAberto(false);
-          mostrarAlerta('Erro', 'Erro ao limpar histórico. Tente novamente.');
-        }
-      },
-    );
-  };
+  const { salvas, historico: atividades } = separarFichas(historico);
+  const historicoVisivel = historicoAberto ? atividades : atividades.slice(0, 3);
 
   return (
     <Container className="custom-scroll">
-      <AnimatePresence>
-        {modalAberto && (
-          <ModalOverlay
-            as={motion.div}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() =>
-              modalConfig.tipo === 'alert' ? modalConfig.onConfirm() : modalConfig.onCancel()
-            }
-          >
-            <ModalContainer
-              as={motion.div}
-              initial={{ opacity: 0, scale: 0.8, y: -50 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.8, y: -50 }}
-              transition={{ type: 'spring', duration: 0.5 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ModalHeader>
-                <ModalTitulo>{modalConfig.titulo}</ModalTitulo>
-              </ModalHeader>
-              <ModalBody>
-                <ModalMensagem>{modalConfig.mensagem}</ModalMensagem>
-              </ModalBody>
-              <ModalFooter>
-                {modalConfig.tipo === 'confirm' ? (
-                  <>
-                    <ModalButton
-                      color="#6c757d"
-                      onClick={modalConfig.onCancel}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      Cancelar
-                    </ModalButton>
-                    <ModalButton
-                      color="var(--accent)"
-                      onClick={modalConfig.onConfirm}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                    >
-                      Confirmar
-                    </ModalButton>
-                  </>
-                ) : (
-                  <ModalButton
-                    color="var(--accent)"
-                    onClick={modalConfig.onConfirm}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    style={{ width: '100%' }}
-                  >
-                    OK
-                  </ModalButton>
-                )}
-              </ModalFooter>
-            </ModalContainer>
-          </ModalOverlay>
-        )}
-      </AnimatePresence>
+      <DialogoAcao
+        aberto={modalAberto}
+        titulo={modalConfig.titulo}
+        mensagem={modalConfig.mensagem}
+        icone={<FiAlertCircle />}
+        tipo="alerta"
+        rotuloConfirmar="OK"
+        linhaUnica={Boolean(modalConfig.linhaUnica)}
+        onConfirmar={modalConfig.onConfirm}
+        onCancelar={modalConfig.onCancel || modalConfig.onConfirm}
+      />
 
       <Header>
         <motion.div
@@ -260,25 +177,24 @@ const TreinoPage = () => {
           transition={{ duration: 0.8, delay: 0.2 }}
           style={{ width: '100%' }}
         >
-          <PageTitle>Sistema de Treinos</PageTitle>
-          <PageSubtitle>
-            A programação abaixo segue os dias e o tempo do seu perfil. A sessão avulsa continua
-            disponível para gerar um treino isolado.
-          </PageSubtitle>
+          <PageTitle>Meus treinos</PageTitle>
+          <PageSubtitle>A próxima sessão, a programação e o que você já fez.</PageSubtitle>
 
           <ContentContainer>
             <ProgramaSemanalPainel onAtualizado={carregarHistorico} />
-            <GerarTreinoSection
-              as={motion.div}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
-            >
-              <SectionTitle>
-                <FiZap />
-                Sessão avulsa
-              </SectionTitle>
-
+            <GerarTreinoSection>
+              <SecaoToggle
+                type="button"
+                aria-expanded={avulsaAberta}
+                onClick={() => setAvulsaAberta((aberta) => !aberta)}
+              >
+                <SectionTitle>
+                  <FiZap />
+                  Sessão avulsa
+                </SectionTitle>
+                {avulsaAberta ? <FiChevronUp /> : <FiChevronDown />}
+              </SecaoToggle>
+              {avulsaAberta && (
               <FormContainer
                 onSubmit={(evento) => {
                   evento.preventDefault();
@@ -390,55 +306,31 @@ const TreinoPage = () => {
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  {loading ? 'Gerando...' : 'Gerar Treino Perfeito'}
+                  {loading ? 'Gerando...' : 'Gerar sessão'}
                 </GerarButton>
               </FormContainer>
+              )}
             </GerarTreinoSection>
 
-            <HistoricoSection
-              as={motion.div}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.4 }}
-            >
-              <HistoricoHeader>
-                <SectionTitle>
-                  <FiActivity />
-                  Histórico de Treinos
-                </SectionTitle>
-                {historico.length > 0 && (
-                  <LimparButton onClick={handleLimparHistorico}>
-                    <FiTrash2 />
-                    Limpar Histórico
-                  </LimparButton>
-                )}
-              </HistoricoHeader>
-
+            <HistoricoSection>
+              <SectionTitle>
+                <FiZap />
+                Fichas salvas
+              </SectionTitle>
+              <NotaSecao>Ainda não iniciadas. Continuar navegando não exclui nenhuma ficha.</NotaSecao>
               {loadingHistorico ? (
                 <LoadingContainer>
                   <LoadingSpinner />
                 </LoadingContainer>
-              ) : historico.length === 0 ? (
+              ) : salvas.length === 0 ? (
                 <EmptyState>
-                  <FiActivity size={48} />
-                  <EmptyText>Nenhum treino gerado ainda</EmptyText>
-                  <EmptySubtext>Salve a programação acima ou gere uma sessão avulsa.</EmptySubtext>
+                  <EmptyText>Nenhuma ficha aguardando início</EmptyText>
+                  <EmptySubtext>Uma sessão gerada e ainda não iniciada permanece aqui.</EmptySubtext>
                 </EmptyState>
               ) : (
                 <HistoricoGrid>
-                  {historico.map((treino) => (
-                    <HistoricoCard
-                      key={treino._id}
-                      onClick={() => navigate(`/treino/${treino._id}`)}
-                      realizado={treino.realizado}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      {treino.realizado && (
-                        <RealizadoIcon>
-                          <FiCheck />
-                        </RealizadoIcon>
-                      )}
+                  {salvas.map((treino) => (
+                    <CartaoResumo key={treino._id} type="button" onClick={() => navigate(`/treino/${treino._id}`)}>
                       <HistoricoTitulo>{treino.titulo}</HistoricoTitulo>
                       <HistoricoInfo>
                         <HistoricoDetalhe>
@@ -447,21 +339,60 @@ const TreinoPage = () => {
                         </HistoricoDetalhe>
                         <HistoricoDetalhe>
                           <FiActivity />
-                          {treino.exercicios.length} exercícios
+                          {treino.exercicios?.length || 0} exercícios
                         </HistoricoDetalhe>
                       </HistoricoInfo>
-                      <HistoricoData>
-                        {new Date(treino.createdAt).toLocaleDateString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </HistoricoData>
-                    </HistoricoCard>
+                      <EstadoTexto>{ROTULO_ESTADO[treino.estado]}</EstadoTexto>
+                    </CartaoResumo>
                   ))}
                 </HistoricoGrid>
+              )}
+            </HistoricoSection>
+
+            <HistoricoSection>
+              <SectionTitle>
+                <FiCheck />
+                Histórico de atividades
+              </SectionTitle>
+              <NotaSecao>Sessões iniciadas ou marcadas como realizadas.</NotaSecao>
+
+              {loadingHistorico ? (
+                <LoadingContainer>
+                  <LoadingSpinner />
+                </LoadingContainer>
+              ) : atividades.length === 0 ? (
+                <EmptyState>
+                  <EmptyText>Nenhuma sessão iniciada</EmptyText>
+                  <EmptySubtext>Quando você iniciar ou concluir um treino, ele aparece neste resumo.</EmptySubtext>
+                </EmptyState>
+              ) : (
+                <>
+                  <HistoricoGrid>
+                    {historicoVisivel.map((treino) => (
+                      <CartaoResumo key={treino._id} type="button" onClick={() => navigate(`/treino/${treino._id}`)}>
+                        <HistoricoTitulo>{treino.titulo}</HistoricoTitulo>
+                        <HistoricoInfo>
+                          <HistoricoDetalhe>
+                            <FiClock />
+                            {treino.tempoDisponivel} min
+                          </HistoricoDetalhe>
+                          <HistoricoDetalhe>
+                            <FiActivity />
+                            {treino.exercicios?.length || 0} exercícios
+                          </HistoricoDetalhe>
+                        </HistoricoInfo>
+                        <EstadoTexto $feito={treino.estado === 'concluido'}>
+                          {ROTULO_ESTADO[treino.estado]}
+                        </EstadoTexto>
+                      </CartaoResumo>
+                    ))}
+                  </HistoricoGrid>
+                  {atividades.length > 3 && (
+                    <BotaoTexto type="button" onClick={() => setHistoricoAberto((aberto) => !aberto)}>
+                      {historicoAberto ? 'Mostrar só os recentes' : `Ver histórico completo (${atividades.length})`}
+                    </BotaoTexto>
+                  )}
+                </>
               )}
             </HistoricoSection>
           </ContentContainer>
@@ -474,30 +405,24 @@ const TreinoPage = () => {
 
 const PageTitle = styled.h1`
   color: var(--white);
-  font-size: 2rem;
-  line-height: 1.15;
-  letter-spacing: 0.14em;
-  padding-left: 0.14em;
+  font-family: 'Cinzel', serif;
+  font-size: 1.55rem;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
   font-weight: 600;
-  margin-bottom: 8px;
-  background: var(--gold-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.35rem;
   text-align: center;
-  cursor: default;
-  user-select: none;
+  text-transform: none;
 `;
 
 const PageSubtitle = styled.p`
   color: var(--text-secondary);
   font-family: 'Cormorant', serif;
-  font-size: 1rem;
+  font-size: 1.05rem;
   line-height: 1.3;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   text-align: center;
-  margin-bottom: 20px;
-  cursor: default;
-  user-select: none;
+  margin-bottom: 1.25rem;
 `;
 
 const ContentContainer = styled.div`
@@ -506,38 +431,59 @@ const ContentContainer = styled.div`
   gap: 2rem;
 `;
 
-const GerarTreinoSection = styled.div`
-  background: var(--card-bg);
-  border-radius: 12px;
-  padding: 2rem;
-  border: 1px solid rgba(198, 169, 100, 0.1);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+const GerarTreinoSection = styled.section`
+  background: #1a1a1a;
+  border-radius: 16px;
+  padding: 1rem 1.15rem 1.15rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+`;
+
+const SecaoToggle = styled.button`
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: transparent;
+  color: var(--white);
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 0.2rem 0;
+
+  svg {
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
 `;
 
 const SectionTitle = styled.h2`
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.55rem;
   color: var(--white);
-  font-size: 1.5rem;
-  line-height: 1.15;
-  letter-spacing: 0.08em;
-  margin-bottom: 20px;
+  font-size: 1.05rem;
+  line-height: 1.2;
+  letter-spacing: 0.03em;
+  margin: 0;
   font-weight: 600;
-  cursor: default;
-  user-select: none;
+  text-transform: none;
 
   svg {
     color: var(--accent);
+    font-size: 1rem;
   }
 `;
 
 const FormContainer = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 2rem;
-  margin: 0;
+  gap: 1rem;
+  margin: 0.9rem 0 0;
 `;
 
 const InputGroup = styled.div`
@@ -757,62 +703,87 @@ const LetraDestaque = styled(motion.span)`
 `;
 
 const GerarButton = styled(motion.button)`
-  background: var(--gold-gradient);
-  color: var(--background);
-  border: none;
-  padding: 20px;
-  border-radius: 5px;
-  font-size: 0.9rem;
-  line-height: 0.8;
-  letter-spacing: 0.14em;
-  font-weight: 400;
+  background: var(--accent);
+  color: #1a1a1a;
+  border: 1px solid var(--accent);
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  letter-spacing: 0.04em;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s ease;
-  margin-top: 8px;
-  font-family: 'Poppins', sans-serif;
-
-  &:hover:not(:disabled) {
-    box-shadow: 0 5px 15px rgba(198, 169, 100, 0.3);
-  }
+  margin-top: 0.5rem;
+  font-family: 'Cinzel', serif;
+  text-transform: none;
 
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 `;
 
-const HistoricoSection = styled.div`
-  background: var(--card-bg);
+const HistoricoSection = styled.section`
+  background: #1a1a1a;
+  border-radius: 16px;
+  padding: 1.1rem 1.15rem 1.15rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+`;
+
+const NotaSecao = styled.p`
+  margin: 0.35rem 0 0.9rem;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.35;
+`;
+
+const CartaoResumo = styled.button`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  background: #141414;
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 12px;
-  padding: 2rem;
-  border: 1px solid rgba(198, 169, 100, 0.1);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
-`;
-
-const HistoricoHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
-`;
-
-const LimparButton = styled.button`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: #ff6b6b;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 10px;
-  font-weight: 600;
+  padding: 0.85rem;
+  color: inherit;
+  text-transform: none;
+  letter-spacing: 0;
   cursor: pointer;
-  transition: all 0.3s ease;
 
   &:hover {
-    background: #ff5252;
-    transform: translateY(-2px);
+    border-color: rgba(198, 169, 100, 0.45);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+`;
+
+const EstadoTexto = styled.span`
+  margin-top: 0.45rem;
+  color: ${(props) => (props.$feito ? '#7dcec6' : 'var(--text-secondary)')};
+  font-size: 0.82rem;
+`;
+
+const BotaoTexto = styled.button`
+  margin-top: 0.75rem;
+  background: transparent;
+  color: var(--accent);
+  font-family: 'Cinzel', serif;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  padding: 0.35rem 0;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 `;
 
@@ -823,15 +794,9 @@ const LoadingContainer = styled.div`
 `;
 
 const EmptyState = styled.div`
-  text-align: center;
-  padding: 3rem;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
-
-  svg {
-    margin-bottom: 1rem;
-    opacity: 0.5;
-    color: var(--accent);
-  }
+  text-align: left;
+  padding: 0.35rem 0 0.2rem;
+  color: var(--text-secondary);
 `;
 
 const EmptyText = styled.p`
@@ -848,51 +813,18 @@ const EmptySubtext = styled.p`
 
 const HistoricoGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1.5rem;
-`;
-
-const HistoricoCard = styled(motion.div)`
-  background: ${(props) =>
-    props.realizado ? 'rgba(78, 205, 196, 0.12)' : 'rgba(255, 255, 255, 0.04)'};
-  border: 1px solid
-    ${(props) => (props.realizado ? 'rgba(78, 205, 196, 0.45)' : 'rgba(198, 169, 100, 0.25)')};
-  border-radius: 12px;
-  padding: 1.5rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  position: relative;
-
-  &:hover {
-    border-color: var(--accent);
-    background: rgba(198, 169, 100, 0.1);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-    transform: translateY(-2px);
-  }
-`;
-
-const RealizadoIcon = styled.div`
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  background: #4ecdc4;
-  color: white;
-  width: 35px;
-  height: 35px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.2rem;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.75rem;
 `;
 
 const HistoricoTitulo = styled.h4`
   color: var(--white, #f5f5f5);
-  font-size: 1.2rem;
-  margin-bottom: 1rem;
-  margin-right: 2.5rem;
-  font-weight: 700;
-  line-height: 1.35;
+  font-size: 1.05rem;
+  margin-bottom: 0.45rem;
+  margin-right: 0;
+  font-weight: 600;
+  line-height: 1.3;
+  text-transform: none;
 `;
 
 const HistoricoInfo = styled.div`
@@ -914,12 +846,5 @@ const HistoricoDetalhe = styled.div`
     flex-shrink: 0;
   }
 `;
-
-const HistoricoData = styled.div`
-  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
-  font-size: 0.85rem;
-  font-style: italic;
-`;
-
 
 export default TreinoPage;
