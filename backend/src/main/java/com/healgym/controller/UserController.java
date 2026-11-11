@@ -6,6 +6,7 @@ import com.healgym.security.AuthService;
 import com.healgym.util.Js;
 import com.healgym.util.Json;
 import com.healgym.validation.ProfileRules;
+import com.healgym.validation.TrainingProfile;
 import com.healgym.validation.Validator;
 import com.healgym.web.ApiException;
 import com.mongodb.client.model.Filters;
@@ -72,6 +73,7 @@ public class UserController extends BaseController {
     Map<String, Object> body = body(request);
     Validator validator = new Validator(body);
     ProfileRules.apply(validator, false);
+    TrainingProfile.validate(validator, true);
     if (validator.hasErrors()) {
       throw new ApiException(
           400, Json.obj("error", "Dados inválidos", "details", validator.errors()));
@@ -100,12 +102,15 @@ public class UserController extends BaseController {
       user.getProfile().weight = Js.toNumber(weight);
       user.getProfile().bodyType = Js.toStr(bodyType);
       user.getProfile().dateOfBirth = dateOfBirth;
+      TrainingProfile.apply(user.getProfile(), body);
       user.setProfileSetupCompleted(true);
       users.save(user, false);
 
       return ok(Json.obj("message", "Perfil atualizado com sucesso", "user", user.toJson()));
     } catch (ApiException e) {
       throw e;
+    } catch (User.ValidationFailure e) {
+      throw error(400, e.getMessage());
     } catch (Exception e) {
       throw internalError();
     }

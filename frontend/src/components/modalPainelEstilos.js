@@ -174,3 +174,103 @@ export const Nota = styled.p`
   font-size: 0.86rem;
   line-height: 1.35;
 `;
+
+export const Acoes = styled.div`
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.95rem;
+
+  @media (max-width: 420px) {
+    flex-direction: column;
+  }
+`;
+
+const botaoModal = css`
+  flex: 1;
+  min-height: 40px;
+  padding: 0.55rem 0.85rem;
+  border-radius: 8px;
+  font-family: 'Cinzel', serif;
+  font-style: normal;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  cursor: pointer;
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 220ms cubic-bezier(0.22, 1, 0.36, 1);
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    filter: brightness(1.06);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(-2px) scale(0.99);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+
+    &:hover:not(:disabled),
+    &:active:not(:disabled) {
+      transform: none;
+    }
+  }
+`;
+
+export const BotaoCancelar = styled.button`
+  ${botaoModal}
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: var(--text-secondary);
+
+  &:hover:not(:disabled) {
+    color: var(--white);
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+`;
+
+export const BotaoPrimario = styled.button`
+  ${botaoModal}
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #1a1a1a;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+`;
+
+export const BotaoDestrutivo = styled.button`
+  ${botaoModal}
+  border: 1px solid #8d3a3a;
+  background: #8d3a3a;
+  color: var(--white);
+
+  &:hover:not(:disabled) {
+    background: #9a4545;
+    border-color: #9a4545;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #e7b1b1;
+    outline-offset: 2px;
+  }
+`;

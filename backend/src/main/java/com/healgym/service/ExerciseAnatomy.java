@@ -87,6 +87,7 @@ public final class ExerciseAnatomy {
 
     EQUIPAMENTOS.put("banco", "Banco");
     EQUIPAMENTOS.put("barra", "Barra");
+    EQUIPAMENTOS.put("barra_fixa", "Barra fixa");
     EQUIPAMENTOS.put("halteres", "Halteres");
     EQUIPAMENTOS.put("maquina", "Máquina");
     EQUIPAMENTOS.put("polia_alta", "Polia alta");
@@ -269,11 +270,7 @@ public final class ExerciseAnatomy {
             "Encolher os ombros durante a elevação.");
         break;
       case "deltoide_posterior":
-        if (n.contains("face pull")) {
-          definir(e, "deltoide_posterior", l("costas_medias", "manguito"), l(), l(), "Abdução horizontal com rotação externa");
-          tecnica(e, "Puxe a corda em direção ao rosto, afastando as mãos e girando os braços para fora no final.",
-              "Puxar com o tronco ou encolher os ombros.");
-        } else if (maquina) {
+        if (maquina) {
           definir(e, "deltoide_posterior", l("costas_medias"), l(), l(), "Abdução horizontal do ombro");
           tecnica(e, "Com o peito apoiado, abra os braços até a linha dos ombros.",
               "Encolher o trapézio ou usar impulso.");

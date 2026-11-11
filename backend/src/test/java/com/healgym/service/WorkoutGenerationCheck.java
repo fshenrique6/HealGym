@@ -233,34 +233,36 @@ public final class WorkoutGenerationCheck {
       check(ExerciseDatabase.porId(antigo) != null && ExerciseDatabase.porId(antigo).ativo, "id antigo perdido " + antigo);
     }
     Set<String> principais = new LinkedHashSet<>(Arrays.asList(
-        "Supino Reto com Barra", "Supino Reto com Halteres", "Supino Inclinado com Barra", "Supino Inclinado com Halteres",
-        "Supino Declinado com Barra", "Chest Press na Máquina", "Crucifixo Reto com Halteres", "Voador Peitoral", "Cross Over na Polia Alta",
-        "Puxada Frontal Pegada Aberta", "Pulldown com Pegada Supinada", "Barra Fixa", "Remada Curvada com Barra",
-        "Remada Unilateral com Halter", "Remada na Polia Baixa", "Remada Cavalinho com Barra",
-        "Desenvolvimento com Barra", "Desenvolvimento com Halteres", "Desenvolvimento na Máquina", "Elevação Lateral com Halteres",
-        "Crucifixo Inverso com Halteres", "Voador Invertido", "Face Pull na Polia Alta",
-        "Tríceps Pulley na Polia Alta", "Tríceps Corda na Polia Alta", "Tríceps Testa com Barra", "Tríceps Francês com Halteres", "Mergulho entre Bancos",
+        "Supino Reto com Barra", "Supino Reto com Halteres",
+        "Supino Inclinado com Barra", "Supino Inclinado com Halteres",
+        "Supino Declinado com Barra", "Supino Declinado com Halteres",
+        "Crucifixo Reto com Halteres", "Cross Over na Polia Alta", "Voador Peitoral",
+        "Puxada Frontal Pegada Aberta", "Pulldown com Pegada Supinada", "Barra Fixa",
+        "Remada Curvada com Barra", "Remada Unilateral com Halter", "Remada na Polia Baixa",
+        "Desenvolvimento com Barra", "Desenvolvimento com Halteres", "Desenvolvimento na Máquina",
+        "Elevação Lateral com Halteres", "Elevação Frontal com Barra",
+        "Crucifixo Inverso com Halteres", "Voador Invertido",
+        "Tríceps Pulley na Polia Alta", "Tríceps Corda na Polia Alta", "Tríceps Testa com Barra", "Tríceps Francês com Halteres",
         "Rosca Direta com Barra", "Rosca Alternada com Halteres", "Rosca Martelo com Halteres", "Rosca Scott com Barra",
-        "Agachamento com Barra", "Leg Press", "Cadeira Extensora", "Mesa Flexora", "Cadeira Flexora", "Levantamento Terra Romeno",
-        "Afundo com Halteres", "Afundo Búlgaro com Halteres", "Hip Thrust com Barra", "Panturrilha em Máquina",
-        "Panturrilha Sentado com Halteres", "Agachamento Goblet com Halter",
-        "Prancha", "Abdominal Tradicional", "Elevação de Joelhos", "Prancha Lateral", "Dead Bug"));
+        "Rosca Concentrada com Halter",
+        "Agachamento com Barra", "Agachamento no Smith", "Leg Press", "Agachamento Goblet com Halter",
+        "Afundo com Halteres", "Afundo Búlgaro com Halteres", "Cadeira Extensora",
+        "Stiff com Halteres", "Mesa Flexora", "Cadeira Flexora", "Hip Thrust com Barra", "Coice de Glúteo na Polia",
+        "Panturrilha em Máquina", "Panturrilha Sentado com Halteres", "Panturrilha no Leg Press",
+        "Prancha", "Abdominal Tradicional", "Elevação de Joelhos"));
     Set<String> ativos = new LinkedHashSet<>();
     for (ExerciseDatabase.Exercise e : ExerciseDatabase.ativos()) {
       check(ativos.add(e.nome), "exercício ativo duplicado " + e.nome);
       check(e.id != null && !e.id.isEmpty(), "ativo sem identificador " + e.nome);
+      String nome = e.nome.toLowerCase(Locale.ROOT);
+      check(!nome.contains("face pull") && !nome.contains("romeno"), "exercício proibido ativo " + e.nome);
     }
-    check(ativos.size() == 49, "catálogo ativo com " + ativos.size() + " exercícios");
+    check(ativos.size() == principais.size(), "catálogo ativo com " + ativos.size() + " exercícios");
     check(ativos.equals(principais), "catálogo ativo diferente da lista principal");
-    ExerciseDatabase.Exercise mergulho = null;
-    for (ExerciseDatabase.Exercise e : ExerciseDatabase.ativos()) {
-      if ("Mergulho entre Bancos".equals(e.nome)) {
-        mergulho = e;
-      }
-    }
-    check(mergulho != null && "TRICEPS".equals(mergulho.grupo) && "triceps".equals(mergulho.principal), "mergulho fora do tríceps");
+    check(ExerciseDatabase.porId("posterior-face-pull-na-polia-alta") == null, "face pull ainda cadastrado");
+    check(ExerciseDatabase.porId("posteriores-levantamento-terra-romeno") == null, "terra romeno ainda cadastrado");
     ExerciseDatabase.Exercise stiff = ExerciseDatabase.porId("posteriores-stiff-com-halteres");
-    check(stiff != null && !stiff.ativo, "exercício retirado foi apagado ou continua prescritível");
+    check(stiff != null && stiff.ativo && "dobradica".equals(stiff.padrao), "stiff não é a dobradiça prescritível");
 
     for (String grupamento : SessionPlanner.GRUPAMENTOS) {
       for (int tempo = 30; tempo <= 120; tempo += 5) {
@@ -560,9 +562,9 @@ public final class WorkoutGenerationCheck {
     retirado.put("nome", "Stiff com Halteres");
     retirado.put("series", 3);
     Map<String, Object> coberturaAntiga = CoberturaMuscular.calcular("PERNAS", Arrays.asList(retirado));
-    check(coberturaAntiga.get("secoes") instanceof List, "treino antigo com exercício retirado do catálogo ativo");
+    check(coberturaAntiga.get("secoes") instanceof List, "cobertura do stiff pelo id preservado");
     check(CoberturaMuscular.seriesDiretasPorMusculo(Arrays.asList(retirado)).getOrDefault("isquiotibiais", 0.0) == 3.0,
-        "séries do exercício retirado");
+        "séries do stiff");
   }
 
   private static void testarMongo() {

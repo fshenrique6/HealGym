@@ -26,7 +26,8 @@ public final class WorkoutGenerator {
           "COSTAS_BICEPS",
           "PERNAS_OMBROS",
           "OMBROS_BRACOS",
-          "FULL_BODY");
+          "FULL_BODY",
+          "SUPERIOR");
 
   public static final List<String> DIVISOES = Arrays.asList("ABC", "ABCD", "FULL_BODY");
 
@@ -92,6 +93,7 @@ public final class WorkoutGenerator {
     METADATA.put("PERNAS_OMBROS", new Metadata("Treino C — Pernas e Ombros", "Pernas com joelho e quadril, seguidas de deltoides lateral e posterior."));
     METADATA.put("OMBROS_BRACOS", new Metadata("Treino D — Ombros e Braços", "Deltoides com volume principal; braços com volume reduzido, pois já trabalham em A e B."));
     METADATA.put("FULL_BODY", new Metadata("Treino Full Body", "Dominante de joelho, dominante de quadril, empurrar e puxar na mesma sessão."));
+    METADATA.put("SUPERIOR", new Metadata("Treino Superior", "Empurrar e puxar na mesma sessão, com ombros quando o tempo permitir."));
   }
 
   private static final Pattern LETTER = Pattern.compile("^[A-D]$");
@@ -111,8 +113,21 @@ public final class WorkoutGenerator {
       List<String> objetivos,
       int seed,
       int variante) {
-    int experiencia = nivelRank(nivel);
-    String modo = modoObjetivo(objetivos);
+    return montar(grupamento, tempoMinutos, nivelRank(nivel), modoObjetivo(objetivos), seed, variante);
+  }
+
+  public static Session montar(
+      String grupamento, double tempoMinutos, int experiencia, String modo, int seed) {
+    return montar(grupamento, tempoMinutos, experiencia, modo, seed, 0);
+  }
+
+  public static Session montar(
+      String grupamento,
+      double tempoMinutos,
+      int experiencia,
+      String modo,
+      int seed,
+      int variante) {
     if (SessionPlanner.suporta(grupamento)) {
       SessionPlanner.Plano plano =
           SessionPlanner.planejar(grupamento, tempoMinutos, experiencia, modo, seed, variante);
@@ -319,6 +334,24 @@ public final class WorkoutGenerator {
       String nivel,
       List<String> objetivos,
       int seed) {
+    return ciclo(
+        tipoDivisao,
+        letraAtual,
+        itensAtuais,
+        tempo,
+        nivelRank(nivel),
+        modoObjetivo(objetivos),
+        seed);
+  }
+
+  public static Map<String, Object> ciclo(
+      String tipoDivisao,
+      String letraAtual,
+      List<Map<String, Object>> itensAtuais,
+      double tempo,
+      int experiencia,
+      String modo,
+      int seed) {
     Map<String, String> letras = letrasDaDivisao(tipoDivisao);
     if (letras.isEmpty()) {
       return null;
@@ -334,7 +367,7 @@ public final class WorkoutGenerator {
       List<Map<String, Object>> itens =
           entrada.getKey().equals(letraAtual) && itensAtuais != null
               ? itensAtuais
-              : montar(entrada.getValue(), tempo, nivel, objetivos, seed).exercicios;
+              : montar(entrada.getValue(), tempo, experiencia, modo, seed).exercicios;
       Map<String, Double> diretas = CoberturaMuscular.seriesDiretasPorMusculo(itens);
       Map<String, Object> porMusculo = new LinkedHashMap<>();
       for (String musculo : musculos) {

@@ -8,7 +8,6 @@ import api from '../services/api';
 import {
   CAMPOS,
   compararMedicoes,
-  faixaCinturaAltura,
   formatarCm,
   formatarData,
   formatarDataCurta,
@@ -16,7 +15,6 @@ import {
   formatarRazao,
   formularioVazio,
   hojeLocal,
-  leituraCinturaQuadril,
   ordenarMedicoes,
   pontosDaMedida,
   relacaoCinturaAltura,
@@ -40,6 +38,7 @@ import {
   Texto,
   Titulo,
 } from './modalPainelEstilos';
+import AjudaPopover from './AjudaPopover';
 
 const ABAS = [
   { id: 'visao', nome: 'Visão geral' },
@@ -49,7 +48,6 @@ const ABAS = [
 
 const HOVER = { scale: 1.02 };
 const TOQUE = { scale: 0.98 };
-const HOVER_ICONE = { scale: 1.05 };
 const TOQUE_ICONE = { scale: 0.95 };
 const MOLA_MODAL = { type: 'spring', duration: 0.5 };
 const MOLA_PAINEL = { type: 'spring', duration: 0.4 };
@@ -85,23 +83,21 @@ const medidasPresentes = (registro) =>
 
 const deltaCurto = (item) => {
   if (!item || item.semAnterior || item.semPar || item.delta == null) return null;
-  if (item.direcao === 'estavel') return 'sem mudança';
+  if (item.direcao === 'estavel') return '0 cm';
   const sinal = item.direcao === 'aumento' ? '+' : '−';
   return `${sinal}${formatarCm(Math.abs(item.delta))} cm`;
 };
 
-const ValoresMedida = ({ registro, itens }) => (
+const ValoresMedida = ({ registro, itens, comVariacao }) => (
   <ListaValores>
     {medidasPresentes(registro).map((campo) => {
       const item = itens?.find((entrada) => entrada.id === campo.id);
-      const delta = deltaCurto(item);
+      const delta = comVariacao ? deltaCurto(item) : null;
       return (
-        <ValorMedida key={campo.id}>
-          <span>{campo.nome}</span>
-          <ValorNumero>
-            <strong>{formatarCm(registro[campo.id])} cm</strong>
-            {delta ? <em>{delta}</em> : null}
-          </ValorNumero>
+        <ValorMedida key={campo.id} $comVariacao={comVariacao}>
+          <NomeMedida>{campo.nome}</NomeMedida>
+          <ValorAtual>{formatarCm(registro[campo.id])} cm</ValorAtual>
+          {comVariacao && <Variacao>{delta || ''}</Variacao>}
         </ValorMedida>
       );
     })}
@@ -219,7 +215,7 @@ const Grafico = ({ nome, pontos }) => {
   );
 };
 
-const MedidasCorporais = ({ aberto, altura, sexo, imc, classificacaoImc, onFechar, onResumo }) => {
+const MedidasCorporais = ({ aberto, altura, sexo, onFechar, onResumo }) => {
   const tituloId = useId();
   const baseId = useId();
   const dialogRef = useRef(null);
@@ -333,10 +329,8 @@ const MedidasCorporais = ({ aberto, altura, sexo, imc, classificacaoImc, onFecha
   const anterior = registros.length > 1 ? registros[registros.length - 2] : null;
   const comparacao = compararMedicoes(atual, anterior);
   const razaoAltura = atual ? relacaoCinturaAltura(atual.cintura, altura) : null;
-  const faixaAltura = faixaCinturaAltura(razaoAltura);
   const resumoAltura = resumoCinturaAltura(razaoAltura);
   const razaoQuadril = atual ? relacaoCinturaQuadril(atual.cintura, atual.quadril) : null;
-  const leituraQuadril = leituraCinturaQuadril(razaoQuadril, sexo);
   const resumoQuadril = resumoCinturaQuadril(razaoQuadril, sexo);
   const medidasNoGrafico = CAMPOS.filter((campo) =>
     registros.some((item) => item[campo.id] != null && item[campo.id] !== ''),
@@ -379,6 +373,7 @@ const MedidasCorporais = ({ aberto, altura, sexo, imc, classificacaoImc, onFecha
 
   const selecionarAba = (id) => {
     setDescarte(null);
+    setAjuda(null);
     setAba(id);
   };
 
@@ -522,7 +517,7 @@ const MedidasCorporais = ({ aberto, altura, sexo, imc, classificacaoImc, onFecha
     if (!ajuda) return undefined;
     const aoPonteiro = (evento) => {
       const alvo = evento.target;
-      if (alvo instanceof Element && alvo.closest('[data-ajuda-raiz]')) return;
+      if (alvo instanceof Element && alvo.closest('[data-ajuda-botao], [data-ajuda-painel]')) return;
       setAjuda(null);
     };
     document.addEventListener('pointerdown', aoPonteiro);
@@ -534,20 +529,18 @@ const MedidasCorporais = ({ aberto, altura, sexo, imc, classificacaoImc, onFecha
     const erroId = `${baseId}-${campo.id}-erro`;
     const aberta = ajuda === campo.id;
     return (
-      <Campo key={campo.id} $frente={aberta} data-ajuda-raiz={aberta ? '' : undefined}>
+      <Campo key={campo.id}>
         <LinhaRotulo>
           <label htmlFor={`${baseId}-${campo.id}`}>{campo.nome}</label>
-          <BotaoAjuda
-            type="button"
-            whileHover={HOVER_ICONE}
-            whileTap={TOQUE_ICONE}
-            aria-label={`Como medir ${campo.nome.toLowerCase()}`}
-            aria-expanded={aberta}
-            aria-controls={ajudaId}
-            onClick={() => setAjuda(aberta ? null : campo.id)}
-          >
-            ?
-          </BotaoAjuda>
+          <AjudaPopover
+            id={ajudaId}
+            aberto={aberta}
+            onToggle={() => setAjuda(aberta ? null : campo.id)}
+            onFechar={() => setAjuda(null)}
+            rotulo={`Como medir ${campo.nome.toLowerCase()}`}
+            titulo={campo.nome}
+            texto={campo.texto}
+          />
         </LinhaRotulo>
         <LinhaEntrada>
           <Entrada
@@ -556,21 +549,13 @@ const MedidasCorporais = ({ aberto, altura, sexo, imc, classificacaoImc, onFecha
             autoComplete="off"
             value={form[campo.id]}
             aria-invalid={erros[campo.id] ? 'true' : 'false'}
-            aria-describedby={`${ajudaId} ${erros[campo.id] ? erroId : ''}`.trim()}
+            aria-describedby={
+              [aberta ? ajudaId : null, erros[campo.id] ? erroId : null].filter(Boolean).join(' ') || undefined
+            }
             onChange={(evento) => alterarCampo(campo.id, evento.target.value)}
           />
           <Unidade>cm</Unidade>
         </LinhaEntrada>
-        <AnimatePresence initial={false}>
-          {aberta && (
-            <Ajuda key="ajuda" id={ajudaId} {...SURGIR}>
-              {campo.passos.map((passo) => (
-                <Passo key={passo}>{passo}</Passo>
-              ))}
-              <Fonte>{campo.fonte}</Fonte>
-            </Ajuda>
-          )}
-        </AnimatePresence>
         <AnimatePresence initial={false}>
           {erros[campo.id] && (
             <Erro key="erro" id={erroId} role="alert" {...SURGIR}>
@@ -581,16 +566,6 @@ const MedidasCorporais = ({ aberto, altura, sexo, imc, classificacaoImc, onFecha
       </Campo>
     );
   };
-
-  const renderAjudaIndicador = (id, conteudo) => (
-    <AnimatePresence initial={false}>
-      {ajuda === id && (
-        <Ajuda key={id} id={`${baseId}-${id}-ajuda`} {...SURGIR}>
-          {conteudo}
-        </Ajuda>
-      )}
-    </AnimatePresence>
-  );
 
   const aoPainelPronto = () => {
     if (aba !== 'registrar' || !focarDataRef.current || !dataRef.current) return;
@@ -617,122 +592,63 @@ const MedidasCorporais = ({ aberto, altura, sexo, imc, classificacaoImc, onFecha
       <Cartao>
         <Rotulo>Última medição</Rotulo>
         <DataAtual>{formatarData(atual.data)}</DataAtual>
-        <ValoresMedida registro={atual} itens={anterior ? comparacao : null} />
+        <ValoresMedida registro={atual} itens={anterior ? comparacao : null} comVariacao={Boolean(anterior)} />
         {!anterior && <NotaCurta>Sem medição anterior.</NotaCurta>}
       </Cartao>
 
       <Secao>
         <Rotulo>Indicadores corporais</Rotulo>
         <GradeIndicadores>
-          <Cartao $frente={ajuda === 'relacao-altura'} data-ajuda-raiz={ajuda === 'relacao-altura' ? '' : undefined}>
+          <Cartao>
             <LinhaRotulo>
               <NomeIndicador>Cintura / altura</NomeIndicador>
-              <BotaoAjuda
-                type="button"
-                whileHover={HOVER_ICONE}
-                whileTap={TOQUE_ICONE}
-                aria-label="Como ler a relação cintura/altura"
-                aria-expanded={ajuda === 'relacao-altura'}
-                aria-controls={`${baseId}-relacao-altura-ajuda`}
-                onClick={() => setAjuda(ajuda === 'relacao-altura' ? null : 'relacao-altura')}
-              >
-                ?
-              </BotaoAjuda>
+              <AjudaPopover
+                id={`${baseId}-relacao-altura-ajuda`}
+                aberto={ajuda === 'relacao-altura'}
+                onToggle={() => setAjuda(ajuda === 'relacao-altura' ? null : 'relacao-altura')}
+                onFechar={() => setAjuda(null)}
+                rotulo="Como ler a relação cintura/altura"
+                titulo="Cintura / altura"
+                valor={razaoAltura == null ? null : formatarRazao(razaoAltura)}
+                texto="Compara a cintura com a altura."
+                complemento="Abaixo de metade da altura é a referência habitual para adultos."
+              />
             </LinhaRotulo>
             {razaoAltura == null ? (
-              <>
-                <Indisponivel>Indisponível</Indisponivel>
-                <Frase>{altura ? 'Informe a cintura para calcular.' : 'A altura do perfil é necessária.'}</Frase>
-              </>
+              <Indisponivel>Indisponível</Indisponivel>
             ) : (
               <>
                 <ValorIndicador>{formatarRazao(razaoAltura)}</ValorIndicador>
                 {resumoAltura?.titulo && <Faixa>{resumoAltura.titulo}</Faixa>}
-                {resumoAltura?.frase && <Frase>{resumoAltura.frase}</Frase>}
               </>
-            )}
-            {renderAjudaIndicador(
-              'relacao-altura',
-              <>
-                <Passo>Compara a cintura com a altura e descreve a gordura concentrada no meio do corpo.</Passo>
-                <Passo>O cálculo divide a cintura pela altura, as duas em centímetros.</Passo>
-                {razaoAltura != null ? (
-                  <Passo>
-                    Nesta medição: cintura {formatarCm(atual.cintura)} cm e altura {formatarCm(altura)} cm.
-                  </Passo>
-                ) : (
-                  <Passo>Falta a cintura nesta medição ou a altura no perfil.</Passo>
-                )}
-                {faixaAltura && (
-                  <Passo>
-                    {faixaAltura.nome}. {faixaAltura.texto}
-                  </Passo>
-                )}
-                <Fonte>
-                  Faixas da diretriz NICE NG246 para adultos. Não se aplicam da mesma forma a crianças, gestantes,
-                  idosos frágeis ou pessoas com muita massa muscular. Não é diagnóstico e não substitui o IMC.
-                </Fonte>
-                <Fonte>
-                  Estas circunferências não estimam percentual de gordura. Essa conta pede dobras cutâneas, impedância
-                  ou populações específicas.
-                </Fonte>
-              </>,
             )}
           </Cartao>
 
-          <Cartao $frente={ajuda === 'relacao-quadril'} data-ajuda-raiz={ajuda === 'relacao-quadril' ? '' : undefined}>
+          <Cartao>
             <LinhaRotulo>
               <NomeIndicador>Cintura / quadril</NomeIndicador>
-              <BotaoAjuda
-                type="button"
-                whileHover={HOVER_ICONE}
-                whileTap={TOQUE_ICONE}
-                aria-label="Como ler a relação cintura/quadril"
-                aria-expanded={ajuda === 'relacao-quadril'}
-                aria-controls={`${baseId}-relacao-quadril-ajuda`}
-                onClick={() => setAjuda(ajuda === 'relacao-quadril' ? null : 'relacao-quadril')}
-              >
-                ?
-              </BotaoAjuda>
+              <AjudaPopover
+                id={`${baseId}-relacao-quadril-ajuda`}
+                aberto={ajuda === 'relacao-quadril'}
+                onToggle={() => setAjuda(ajuda === 'relacao-quadril' ? null : 'relacao-quadril')}
+                onFechar={() => setAjuda(null)}
+                rotulo="Como ler a relação cintura/quadril"
+                titulo="Cintura / quadril"
+                valor={razaoQuadril == null ? null : formatarRazao(razaoQuadril)}
+                texto="Compara a cintura com o quadril."
+                complemento="A referência usual é 0,90 para homens e 0,85 para mulheres."
+              />
             </LinhaRotulo>
             {razaoQuadril == null ? (
-              <>
-                <Indisponivel>Indisponível</Indisponivel>
-                <Frase>Informe cintura e quadril na mesma medição.</Frase>
-              </>
+              <Indisponivel>Indisponível</Indisponivel>
             ) : (
               <>
                 <ValorIndicador>{formatarRazao(razaoQuadril)}</ValorIndicador>
                 {resumoQuadril?.titulo && <Faixa>{resumoQuadril.titulo}</Faixa>}
-                {resumoQuadril?.frase && <Frase>{resumoQuadril.frase}</Frase>}
               </>
-            )}
-            {renderAjudaIndicador(
-              'relacao-quadril',
-              <>
-                <Passo>Compara a cintura com o quadril na mesma medição.</Passo>
-                <Passo>O cálculo divide a cintura pelo quadril, as duas em centímetros.</Passo>
-                {razaoQuadril != null ? (
-                  <Passo>
-                    Nesta medição: cintura {formatarCm(atual.cintura)} cm e quadril {formatarCm(atual.quadril)} cm.
-                  </Passo>
-                ) : (
-                  <Passo>Falta a cintura ou o quadril nesta medição.</Passo>
-                )}
-                {leituraQuadril && <Passo>{leituraQuadril}</Passo>}
-                <Fonte>
-                  Pontos de corte da consulta de especialistas da OMS de 2008, para adultos. Não identificam doença por
-                  si só.
-                </Fonte>
-              </>,
             )}
           </Cartao>
         </GradeIndicadores>
-        {imc && (
-          <LinhaImc>
-            IMC do perfil: {imc} kg/m²{classificacaoImc ? ` · ${classificacaoImc}` : ''}
-          </LinhaImc>
-        )}
       </Secao>
     </Painel>
   );
@@ -1209,21 +1125,20 @@ const PainelAba = styled(motion.div)`
 const Painel = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 0.55rem;
 `;
 
 const Secao = styled.section`
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.4rem;
   min-width: 0;
 `;
 
 const Cartao = styled.section`
   position: relative;
-  z-index: ${(props) => (props.$frente ? 3 : 0)};
   min-width: 0;
-  padding: 0.7rem 0.75rem;
+  padding: 0.55rem 0.65rem;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1267,8 +1182,8 @@ const DataAtual = styled.p`
 const ListaValores = styled.div`
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.45rem;
-  margin-top: 0.5rem;
+  gap: 0.28rem;
+  margin-top: 0.35rem;
 
   @media (max-width: 420px) {
     grid-template-columns: 1fr;
@@ -1276,38 +1191,45 @@ const ListaValores = styled.div`
 `;
 
 const ValorMedida = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.45rem;
+  display: grid;
+  grid-template-columns: ${(props) => (props.$comVariacao ? 'minmax(0, 1fr) auto 4.6rem' : 'minmax(0, 1fr) auto')};
+  align-items: baseline;
+  gap: 0.4rem;
   min-width: 0;
   margin: 0;
-  padding: 0.4rem 0.65rem;
+  padding: 0.16rem 0.5rem;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: #0a0a0a;
   color: var(--text-secondary);
   font-family: 'Cormorant', serif;
-  font-size: 0.98rem;
-  line-height: 1.2;
+  font-size: 0.92rem;
+  line-height: 1.15;
   user-select: none;
   pointer-events: none;
 `;
 
-const ValorNumero = styled.span`
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.35rem;
+const NomeMedida = styled.span`
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const ValorAtual = styled.strong`
   color: var(--white);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+`;
 
-  em {
-    color: var(--accent);
-    font-style: normal;
-    font-weight: 500;
-    font-size: 0.84rem;
-  }
+const Variacao = styled.span`
+  color: rgba(224, 224, 224, 0.55);
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 `;
 
 const NotaCurta = styled.p`
@@ -1353,10 +1275,10 @@ const NomeIndicador = styled.h4`
 `;
 
 const ValorIndicador = styled.p`
-  margin: 0.2rem 0 0.1rem;
+  margin: 0.12rem 0 0;
   color: var(--accent);
   font-family: 'Cinzel', serif;
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   line-height: 1.1;
 `;
 
@@ -1369,28 +1291,12 @@ const Indisponivel = styled.p`
 `;
 
 const Faixa = styled.p`
-  margin: 0.15rem 0 0;
+  margin: 0.1rem 0 0;
   color: var(--accent);
   font-family: 'Cormorant', serif;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  line-height: 1.25;
-`;
-
-const Frase = styled.p`
-  margin: 0.15rem 0 0;
-  color: var(--text-secondary);
-  font-family: 'Cormorant', serif;
-  font-size: 0.92rem;
-  line-height: 1.3;
-`;
-
-const LinhaImc = styled.p`
-  margin: 0;
-  color: rgba(224, 224, 224, 0.62);
-  font-family: 'Cormorant', serif;
-  font-size: 0.88rem;
-  line-height: 1.3;
+  line-height: 1.2;
 `;
 
 const NotaFina = styled(Nota)`
@@ -1531,7 +1437,6 @@ const Grade = styled.div`
 
 const Campo = styled.div`
   position: relative;
-  z-index: ${(props) => (props.$frente ? 3 : 0)};
   min-width: 0;
 `;
 
@@ -1555,35 +1460,6 @@ const LinhaRotulo = styled.div`
 
   label {
     cursor: pointer;
-  }
-`;
-
-const BotaoAjuda = styled(motion.button)`
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--background);
-  font-family: 'Cinzel', serif;
-  font-size: 0.68rem;
-  font-weight: 600;
-  line-height: 1;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-
-  &:hover {
-    background: var(--accent-light);
-    border-color: var(--accent-light);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
   }
 `;
 
@@ -1616,36 +1492,6 @@ const Unidade = styled.span`
   font-family: 'Cormorant', serif;
   font-size: 0.95rem;
   flex-shrink: 0;
-`;
-
-const Ajuda = styled(motion.div)`
-  position: absolute;
-  top: calc(100% + 0.35rem);
-  left: 0;
-  right: 0;
-  z-index: 4;
-  margin: 0;
-  padding: 0.6rem 0.7rem;
-  border-radius: 8px;
-  background: #141414;
-  border: 1px solid rgba(198, 169, 100, 0.28);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.5);
-`;
-
-const Passo = styled.p`
-  margin: 0 0 0.25rem;
-  color: var(--text-secondary);
-  font-family: 'Cormorant', serif;
-  font-size: 0.92rem;
-  line-height: 1.35;
-`;
-
-const Fonte = styled.p`
-  margin: 0.35rem 0 0;
-  color: rgba(224, 224, 224, 0.55);
-  font-family: 'Cormorant', serif;
-  font-size: 0.82rem;
-  line-height: 1.3;
 `;
 
 const Erro = styled(motion.p)`

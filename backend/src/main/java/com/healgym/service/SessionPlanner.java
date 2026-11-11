@@ -16,7 +16,13 @@ public final class SessionPlanner {
 
   public static final List<String> GRUPAMENTOS =
       Arrays.asList(
-          "PEITO_TRICEPS", "COSTAS_BICEPS", "PERNAS_OMBROS", "PERNAS", "OMBROS_BRACOS", "FULL_BODY");
+          "PEITO_TRICEPS",
+          "COSTAS_BICEPS",
+          "PERNAS_OMBROS",
+          "PERNAS",
+          "OMBROS_BRACOS",
+          "FULL_BODY",
+          "SUPERIOR");
 
   private static final int SEGUNDOS_APROXIMACAO = 70;
   private static final Set<String> GRANDES =
@@ -32,6 +38,7 @@ public final class SessionPlanner {
     final boolean obrigatorio;
     final String volume;
     final boolean variarEquipamento;
+    final boolean soUnilateral;
 
     Slot(
         String grupo,
@@ -42,6 +49,19 @@ public final class SessionPlanner {
         boolean obrigatorio,
         String volume,
         boolean variarEquipamento) {
+      this(grupo, padrao, regiao, bloco, ordem, obrigatorio, volume, variarEquipamento, false);
+    }
+
+    Slot(
+        String grupo,
+        String padrao,
+        String regiao,
+        int bloco,
+        int ordem,
+        boolean obrigatorio,
+        String volume,
+        boolean variarEquipamento,
+        boolean soUnilateral) {
       this.grupo = grupo;
       this.padrao = padrao;
       this.regiao = regiao;
@@ -50,6 +70,7 @@ public final class SessionPlanner {
       this.obrigatorio = obrigatorio;
       this.volume = volume;
       this.variarEquipamento = variarEquipamento;
+      this.soUnilateral = soUnilateral;
     }
   }
 
@@ -75,7 +96,13 @@ public final class SessionPlanner {
         boolean obrigatorio,
         String volume,
         boolean variar) {
-      slots.add(new Slot(grupo, padrao, regiao, bloco, ordem, obrigatorio, volume, variar));
+      slots.add(new Slot(grupo, padrao, regiao, bloco, ordem, obrigatorio, volume, variar, false));
+      return this;
+    }
+
+    Estrutura unilateral(
+        String grupo, String padrao, int bloco, int ordem, boolean obrigatorio, String volume) {
+      slots.add(new Slot(grupo, padrao, null, bloco, ordem, obrigatorio, volume, false, true));
       return this;
     }
   }
@@ -151,7 +178,11 @@ public final class SessionPlanner {
         e.add("PERNAS", "dobradica", 0, 3, true);
         e.add("PERNAS", "flexao_joelho", 0, 4, false);
         e.add("PERNAS", "panturrilha", 0, 6, false);
-        if (tempo >= 45) e.add("PERNAS", "agachamento", null, 0, 1, false, "normal", true);
+        if (tempo >= 45 && variante >= 1) {
+          e.unilateral("PERNAS", "agachamento", 0, 1, false, "normal");
+        } else if (tempo >= 45) {
+          e.add("PERNAS", "agachamento", null, 0, 1, false, "normal", true);
+        }
         if (tempo >= 45) e.add("PERNAS", "extensao_joelho", 0, 2, false);
         if (tempo >= 60) e.add("PERNAS", "gluteo", 0, 5, false);
         if (tempo >= 75) e.add("CORE", "core", null, 1, 0, false, "baixo", false);
@@ -168,8 +199,48 @@ public final class SessionPlanner {
         if (tempo >= 45) e.add("BICEPS", "rosca_neutra", null, 2, 1, false, "baixo", false);
         return e;
       }
+      case "SUPERIOR": {
+        Estrutura e = new Estrutura("Empurrar", "Puxar", "Ombros");
+        if (variante % 2 == 1) {
+          e.add("COSTAS", "remada", 1, 0, true);
+          e.add("PEITO", "supino_inclinado", 0, 0, true);
+        } else {
+          e.add("PEITO", "supino_horizontal", 0, 0, true);
+          e.add("COSTAS", "puxada_vertical", 1, 0, true);
+        }
+        if (tempo >= 45) {
+          e.add("OMBROS", variante % 2 == 1 ? "deltoide_posterior" : "elevacao_lateral", 2, 0, false);
+        }
+        if (tempo >= 60) {
+          e.add(
+              "PEITO",
+              variante % 2 == 1 ? "supino_horizontal" : "supino_inclinado",
+              null,
+              0,
+              1,
+              false,
+              "normal",
+              true);
+          e.add("COSTAS", variante % 2 == 1 ? "puxada_vertical" : "remada", 1, 1, false);
+        }
+        if (tempo >= 75) e.add("TRICEPS", "triceps_pushdown", null, 0, 2, false, "baixo", false);
+        if (tempo >= 90) e.add("BICEPS", "rosca", null, 1, 2, false, "baixo", false);
+        return e;
+      }
       case "FULL_BODY": {
         Estrutura e = new Estrutura("Movimentos principais", "Complementos");
+        if (variante >= 2) {
+          e.unilateral("PERNAS", "agachamento", 0, 0, true, "normal");
+          e.add("PEITO", "supino_horizontal", 0, 1, true);
+          e.add("COSTAS", "remada", 0, 2, true);
+          e.add("PERNAS", "dobradica", 0, 3, true);
+          if (tempo >= 45) e.add("COSTAS", "puxada_vertical", 1, 0, false);
+          if (tempo >= 55) e.add("OMBROS", "deltoide_posterior", 1, 1, false);
+          if (tempo >= 60) e.add("CORE", "core", null, 1, 5, false, "baixo", false);
+          if (tempo >= 60) e.add("PERNAS", "panturrilha", null, 1, 4, false, "baixo", false);
+          if (tempo >= 75) e.add("PERNAS", "flexao_joelho", 1, 2, false);
+          return e;
+        }
         e.add("PERNAS", "agachamento", 0, 0, true);
         e.add("PEITO", variante == 1 ? "supino_inclinado" : "supino_horizontal", 0, 1, true);
         e.add("COSTAS", variante == 1 ? "puxada_vertical" : "remada", 0, 2, true);
@@ -191,9 +262,12 @@ public final class SessionPlanner {
   public static Plano planejar(
       String grupamento, double tempo, int experiencia, String modo, int seed, int variante) {
     Set<String> evitar = new LinkedHashSet<>();
-    if ("FULL_BODY".equals(grupamento) && variante == 1) {
-      for (Map<String, Object> item : planejar(grupamento, tempo, experiencia, modo, seed, 0).exercicios) {
-        evitar.add(String.valueOf(item.get("exercicioId")));
+    if (variante > 0) {
+      for (int anterior = 0; anterior < variante; anterior++) {
+        for (Map<String, Object> item :
+            planejar(grupamento, tempo, experiencia, modo, seed, anterior).exercicios) {
+          evitar.add(String.valueOf(item.get("exercicioId")));
+        }
       }
     }
     Estrutura estrutura = estrutura(grupamento, tempo, variante);
@@ -382,8 +456,14 @@ public final class SessionPlanner {
         if (exercicio.dificuldade > (experiencia >= 3 ? 3 : 2)) {
           continue;
         }
-        if ("agachamento".equals(slot.padrao) && exercicio.unilateral) {
-          continue;
+        if ("agachamento".equals(slot.padrao)) {
+          if (slot.soUnilateral) {
+            if (!exercicio.unilateral) {
+              continue;
+            }
+          } else if (exercicio.unilateral) {
+            continue;
+          }
         }
         candidatos.add(exercicio);
       }
@@ -409,7 +489,18 @@ public final class SessionPlanner {
       if (exercicio.composto && slot.obrigatorio && experiencia >= 2 && "barra".equals(tipo)) {
         nota += 1;
       }
-      if (exercicio.composto && experiencia <= 1 && ("maquina".equals(tipo) || "polia".equals(tipo))) {
+      // Supino não herda o bônus de máquina: o principal tradicional é halter ou barra,
+      // conforme a dificuldade já cadastrada. Barra com dificuldade 2 continua fora do rank 1.
+      if (exercicio.composto
+          && experiencia <= 1
+          && !slot.padrao.startsWith("supino")
+          && ("maquina".equals(tipo) || "polia".equals(tipo))) {
+        nota += 2;
+      }
+      if (exercicio.composto
+          && experiencia <= 1
+          && slot.padrao.startsWith("supino")
+          && ("halteres".equals(tipo) || "barra".equals(tipo))) {
         nota += 2;
       }
       if (exercicio.composto && (!slot.obrigatorio || !evitar.isEmpty()) && "maquina".equals(tipo)) {
@@ -469,6 +560,9 @@ public final class SessionPlanner {
         return "polia";
       }
     }
+    if (equipamento.contains("barra_fixa")) {
+      return "corpo";
+    }
     if (equipamento.contains("barra")) {
       return "barra";
     }
@@ -503,12 +597,16 @@ public final class SessionPlanner {
       descanso = 45;
       rir = null;
     } else if (exercicio.composto) {
-      boolean forca = "forca".equals(modo) && experiencia >= 2;
-      if (forca && principal) {
+      if ("forca".equals(modo) && experiencia <= 1) {
+        // Força no rank 1: faixa moderada e RIR 2-3. Não usa 4-6 nem falha.
+        repeticoes = principal ? "6-10" : "8-10";
+        descanso = 120;
+        rir = "2-3";
+      } else if ("forca".equals(modo) && principal) {
         repeticoes = "4-6";
         descanso = 150;
         rir = "2-3";
-      } else if (forca) {
+      } else if ("forca".equals(modo)) {
         repeticoes = "6-8";
         descanso = 120;
         rir = "1-3";
@@ -907,6 +1005,8 @@ public final class SessionPlanner {
         return Arrays.asList("elevacao_lateral", "deltoide_posterior", "triceps_pushdown|triceps_overhead", "rosca|rosca_neutra");
       case "FULL_BODY":
         return Arrays.asList("agachamento", "supino_horizontal|supino_inclinado", "remada|puxada_vertical", "dobradica|gluteo|flexao_joelho");
+      case "SUPERIOR":
+        return Arrays.asList("supino_horizontal|supino_inclinado", "remada|puxada_vertical");
       default:
         return Collections.emptyList();
     }

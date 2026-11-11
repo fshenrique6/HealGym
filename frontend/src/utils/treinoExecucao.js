@@ -29,7 +29,7 @@ const BLOCO_POR_GRUPO = {
   CORE: 'Core',
 };
 
-const DIVISOES = { ABC: 'ABC', ABCD: 'ABCD', FULL_BODY: 'Full Body' };
+const DIVISOES = { ABC: 'ABC', ABCD: 'ABCD', FULL_BODY: 'Full Body', PROGRAMA: 'Programa semanal' };
 
 export function rotuloDivisao(treino) {
   return DIVISOES[treino?.tipoDivisao] || null;

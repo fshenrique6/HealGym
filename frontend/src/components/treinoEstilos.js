@@ -123,8 +123,9 @@ export const TreinoObjetivo = styled.p`
 
 export const ActionButtons = styled.div`
   display: flex;
-  gap: 1rem;
-  margin-top: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
 `;
 
 export const ActionButton = styled.button`
@@ -173,14 +174,13 @@ export const ExerciciosList = styled.div`
 
 export const ExercicioCard = styled.div`
   display: flex;
-  gap: 1rem;
-  background: ${(props) => (props.completo ? 'rgba(78, 205, 196, 0.1)' : 'rgba(255, 255, 255, 0.03)')};
-  border: 1px solid ${(props) => (props.completo ? '#4ecdc4' : 'rgba(198, 169, 100, 0.1)')};
+  gap: 0.85rem;
+  background: ${(props) => (props.completo ? '#14201f' : '#1a1a1a')};
+  border: 1px solid ${(props) => (props.completo ? 'rgba(125, 206, 198, 0.45)' : 'rgba(255, 255, 255, 0.08)')};
   border-left: 4px solid
-    ${(props) => (props.completo ? '#4ecdc4' : props.emDescanso ? '#ffd93d' : 'var(--accent)')};
-  border-radius: 8px;
-  padding: 1.1rem;
-  transition: all 0.3s ease;
+    ${(props) => (props.completo ? '#7dcec6' : props.emDescanso ? '#ffd93d' : 'var(--accent)')};
+  border-radius: 12px;
+  padding: 0.85rem 0.9rem;
   position: relative;
   overflow: hidden;
 
@@ -209,17 +209,14 @@ export const ExercicioCard = styled.div`
   `}
 
   &:hover {
-    background: ${(props) => (props.completo ? 'rgba(78, 205, 196, 0.15)' : 'rgba(255, 255, 255, 0.05)')};
-    transform: translateX(5px);
+    border-color: ${(props) => (props.completo ? 'rgba(125, 206, 198, 0.7)' : 'rgba(198, 169, 100, 0.4)')};
   }
 `;
 
 export const ExercicioNumero = styled.div`
-  background: ${(props) =>
-    props.completo
-      ? 'linear-gradient(135deg, #4ecdc4 0%, #44a3a0 100%)'
-      : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'};
-  color: white;
+  background: ${(props) => (props.completo ? '#1c3d3a' : '#141414')};
+  color: ${(props) => (props.completo ? '#7dcec6' : 'var(--accent)')};
+  border: 1px solid ${(props) => (props.completo ? 'rgba(125, 206, 198, 0.5)' : 'rgba(198, 169, 100, 0.45)')};
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -321,18 +318,20 @@ export const Equipamentos = styled.div`
 `;
 
 export const ResumoSection = styled.div`
-  background: rgba(198, 169, 100, 0.1);
-  border: 1px solid rgba(198, 169, 100, 0.2);
-  border-radius: 8px;
-  padding: 2rem;
-  margin-top: 2rem;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0.85rem 0 0;
+  margin-top: 0.25rem;
 `;
 
 export const ResumoTitulo = styled.h3`
-  color: var(--accent);
-  font-size: 1.5rem;
-  margin-bottom: 1rem;
-  font-weight: 700;
+  color: var(--white);
+  font-size: 1.05rem;
+  margin-bottom: 0.65rem;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.02em;
 `;
 
 export const ResumoTexto = styled.p`
@@ -420,96 +419,5 @@ export const SeriesProgressFill = styled.div`
   border-radius: 4px;
   transition: width 0.5s ease;
   box-shadow: 0 0 10px rgba(198, 169, 100, 0.5);
-`;
-
-
-
-export const ModalOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
-  backdrop-filter: blur(8px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  padding: 1rem;
-  cursor: default;
-`;
-
-export const ModalContainer = styled.div`
-  background: linear-gradient(135deg, rgba(26, 26, 26, 0.98) 0%, rgba(10, 10, 10, 0.98) 100%);
-  border: 2px solid var(--accent);
-  border-radius: 16px;
-  max-width: min(92vw, 960px);
-  width: max-content;
-  box-shadow: 0 20px 60px rgba(198, 169, 100, 0.3);
-  overflow: hidden;
-  cursor: default;
-`;
-
-export const ModalHeader = styled.div`
-  background: rgba(198, 169, 100, 0.1);
-  border-bottom: 1px solid var(--accent);
-  padding: 1.5rem 2rem;
-  cursor: default;
-`;
-
-export const ModalTitulo = styled.h2`
-  color: var(--white);
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin: 0;
-  background: var(--gold-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  cursor: default;
-`;
-
-export const ModalBody = styled.div`
-  padding: 2rem;
-  width: 110%;
-  cursor: default;
-`;
-
-export const ModalMensagem = styled.p`
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  line-height: 1.6;
-  margin: 0;
-  cursor: default;
-  white-space: normal;
-  overflow-wrap: break-word;
-  max-width: 62ch;
-`;
-
-export const ModalFooter = styled.div`
-  padding: 1.5rem 2rem;
-  border-top: 1px solid rgba(198, 169, 100, 0.2);
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-end;
-  cursor: default;
-`;
-
-export const ModalButton = styled(motion.button)`
-  padding: 0.75rem 2rem;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  background: ${(props) => props.color};
-  color: ${(props) => (props.color === '#6c757d' ? 'white' : 'var(--background)')};
-  min-width: 120px;
-
-  &:hover {
-    filter: brightness(1.1);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  }
 `;
 

@@ -32,4 +32,13 @@ public class WorkoutRepository extends OwnedRepository {
     }
     return encontrados;
   }
+
+  public List<Document> findByPrograma(ObjectId userId, String chave) {
+    List<Document> encontrados = new ArrayList<>();
+    Bson filtro = Filters.and(Filters.eq("user", userId), Filters.eq("programaChave", chave));
+    for (Document document : documents().find(filtro).sort(Sorts.ascending("programaOrdem"))) {
+      encontrados.add(document);
+    }
+    return encontrados;
+  }
 }
