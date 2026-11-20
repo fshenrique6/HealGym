@@ -30,10 +30,6 @@ public class Db {
     return database.getCollection("users");
   }
 
-  public MongoCollection<Document> diets() {
-    return database.getCollection("diets");
-  }
-
   public MongoCollection<Document> workouts() {
     return database.getCollection("workouts");
   }
@@ -54,7 +50,6 @@ public class Db {
     try {
       users().createIndex(Indexes.ascending("email"), new IndexOptions().unique(true));
       users().createIndex(Indexes.descending("createdAt"));
-      diets().createIndex(Indexes.compoundIndex(Indexes.ascending("user"), Indexes.descending("createdAt")));
       workouts()
           .createIndex(
               Indexes.compoundIndex(Indexes.ascending("user"), Indexes.descending("createdAt")));
