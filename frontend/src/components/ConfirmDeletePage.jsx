@@ -123,7 +123,7 @@ const ConfirmDeletePage = () => {
               <Consequencias>
                 <li>Perfil e dados pessoais.</li>
                 <li>Acesso a esta conta.</li>
-                <li>Acesso aos treinos, dietas e histórico feitos nela.</li>
+                <li>Acesso aos treinos e ao histórico feitos nela.</li>
               </Consequencias>
             </Aviso>
             {erroServidor && <MensagemErro role="alert">{message}</MensagemErro>}
