@@ -107,23 +107,6 @@ class ApiService {
     });
   }
 
-  async generateDiet(dietData) {
-    return this.request('/nutrition/generate-diet', {
-      method: 'POST',
-      body: JSON.stringify(dietData),
-    });
-  }
-
-  async getMyDiets() {
-    return this.request('/nutrition/my-diets');
-  }
-
-  async deleteDiet(dietId) {
-    return this.request(`/nutrition/diet/${dietId}`, {
-      method: 'DELETE',
-    });
-  }
-
   async verifyToken() {
     return this.request('/auth/verify-token', {
       method: 'POST',
