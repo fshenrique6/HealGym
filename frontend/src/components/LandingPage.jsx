@@ -1,6 +1,6 @@
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { FiActivity, FiTarget, FiUser } from 'react-icons/fi';
+import { FiTarget, FiUser } from 'react-icons/fi';
 import { GiMuscleUp } from 'react-icons/gi';
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
@@ -73,14 +73,6 @@ const LandingPage = () => {
             <FeatureCardTitle>Acompanhamento</FeatureCardTitle>
             <FeatureCardText>
               Acompanhe sua evolução com ajustes em tempo real.
-            </FeatureCardText>
-          </FeatureCard>
-
-          <FeatureCard whileHover={{ y: -10 }} transition={{ type: 'spring', stiffness: 300 }}>
-            <FiActivity size="min(5vw, 40px)" color="var(--accent)" />
-            <FeatureCardTitle>Dieta Especializada</FeatureCardTitle>
-            <FeatureCardText>
-              Planos alimentares personalizados para potencializar seus resultados.
             </FeatureCardText>
           </FeatureCard>
 
