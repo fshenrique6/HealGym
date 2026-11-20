@@ -12,7 +12,6 @@ import Dashboard from './components/Dashboard';
 import TreinoPage from './components/TreinoPage';
 import TreinoGeradoPage from './components/TreinoGeradoPage';
 import ExecucaoTreinoPage from './components/ExecucaoTreinoPage';
-import DietaPage from './components/DietaPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import ProfileSetupGuard from './components/ProfileSetupGuard';
 import { GlobalStyles } from './styles/GlobalStyles';
@@ -83,16 +82,6 @@ function App() {
               <ProtectedRoute>
                 <ProfileSetupGuard>
                   <TreinoGeradoPage />
-                </ProfileSetupGuard>
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/dieta"
-            element={
-              <ProtectedRoute>
-                <ProfileSetupGuard>
-                  <DietaPage />
                 </ProfileSetupGuard>
               </ProtectedRoute>
             }
