@@ -142,9 +142,6 @@ const Dashboard = () => {
     navigate('/treino');
   };
 
-  const handleDietaClick = () => {
-    navigate('/dieta');
-  };
   const age = calculateAge(user?.profile?.dateOfBirth);
   const basalMetabolicRate = calculateBasalMetabolicRate(
     user?.profile?.weight,
@@ -433,7 +430,7 @@ const Dashboard = () => {
               <WelcomeCard>
                 <WelcomeTitle>Bem-vindo ao HealGym!</WelcomeTitle>
                 <WelcomeDescription>
-                  Seu aplicativo completo para treino e dieta personalizada.
+                  Seu aplicativo completo para treino personalizado.
                 </WelcomeDescription>
                 <FeaturesList>
                   <FeatureItem
@@ -442,13 +439,6 @@ const Dashboard = () => {
                     onClick={handleTreinoClick}
                   >
                     Treino
-                  </FeatureItem>
-                  <FeatureItem
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleDietaClick}
-                  >
-                    Dieta
                   </FeatureItem>
                 </FeaturesList>
               </WelcomeCard>
@@ -1138,12 +1128,13 @@ const WelcomeDescription = styled.p`
 `;
 
 const FeaturesList = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 1rem;
+  display: flex;
+  justify-content: center;
 `;
 
 const FeatureItem = styled(motion.div)`
+  width: min(100%, calc(50% - 0.5rem));
+  min-width: min(100%, 280px);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(198, 169, 100, 0.2);
   border-radius: 8px;
