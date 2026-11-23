@@ -1,7 +1,6 @@
 name: Deploy Render
 
 # Pipeline de produção: só faz deploy se build + testes passarem.
-# autoDeploy está desligado no render.yaml, então este workflow é o único gatilho.
 on:
   push:
     branches: [main]
