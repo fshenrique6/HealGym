@@ -9,7 +9,6 @@ import {
   DIAS,
   DURACOES,
   EXPERIENCIAS,
-  FREQUENCIAS,
   OBJETIVOS,
   rotulo,
   validarCampoTreino,
@@ -47,13 +46,6 @@ const PerfilTreinoCard = () => {
       valor: perfil.trainingExperience || '',
       display: rotulo(EXPERIENCIAS, perfil.trainingExperience),
       opcoes: EXPERIENCIAS,
-    },
-    {
-      campo: 'recentFrequency',
-      rotulo: 'Frequência recente',
-      valor: perfil.recentFrequency || '',
-      display: rotulo(FREQUENCIAS, perfil.recentFrequency),
-      opcoes: FREQUENCIAS,
     },
     {
       campo: 'availableDays',
