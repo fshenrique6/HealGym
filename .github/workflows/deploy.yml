@@ -1,0 +1,130 @@
+name: Deploy Render
+
+# Pipeline de produção: só faz deploy se build + testes passarem.
+# autoDeploy está desligado no render.yaml, então este workflow é o único gatilho.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  backend-build:
+    name: Backend - build e testes
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Build e testes
+        run: mvn -B -ntp verify
+
+      - name: Validar build da imagem Docker
+        run: docker build -t healgym-api:${{ github.sha }} .
+
+  frontend-build:
+    name: Frontend - lint e build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm run build
+        env:
+          VITE_API_URL: ${{ vars.RENDER_API_URL }}
+
+  deploy-backend:
+    name: Deploy do backend no Render
+    needs: backend-build
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.RENDER_API_URL }}
+    steps:
+      - name: Disparar deploy hook
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_BACKEND }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_HOOK}" ]; then
+            echo "::error::Secret RENDER_DEPLOY_HOOK_BACKEND não configurado."
+            exit 1
+          fi
+          status=$(curl -sS -o response.txt -w '%{http_code}' -X POST "${DEPLOY_HOOK}")
+          echo "HTTP ${status}"
+          cat response.txt
+          if [ "${status}" -ge 300 ]; then
+            echo "::error::Deploy hook retornou HTTP ${status}"
+            exit 1
+          fi
+
+      - name: Aguardar backend ficar saudável
+        if: vars.RENDER_API_URL != ''
+        env:
+          SERVICE_URL: ${{ vars.RENDER_API_URL }}
+        run: |
+          set -uo pipefail
+          health="${SERVICE_URL%/}/api/health"
+          echo "Verificando ${health}"
+          # Dá tempo do Render derrubar a instância antiga antes de medir.
+          sleep 45
+          # Plano free demora para subir: 40 tentativas x 15s = até 10 minutos.
+          for i in $(seq 1 40); do
+            status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${health}" || echo "000")
+            echo "tentativa ${i}: HTTP ${status}"
+            if [ "${status}" = "200" ]; then
+              echo "Backend no ar."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "::error::Backend não respondeu 200 em /api/health dentro do tempo limite."
+          exit 1
+
+  deploy-frontend:
+    name: Deploy do frontend no Render
+    needs: [frontend-build, deploy-backend]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.RENDER_WEB_URL }}
+    steps:
+      - name: Disparar deploy hook
+        env:
+          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_FRONTEND }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DEPLOY_HOOK}" ]; then
+            echo "::error::Secret RENDER_DEPLOY_HOOK_FRONTEND não configurado."
+            exit 1
+          fi
+          status=$(curl -sS -o response.txt -w '%{http_code}' -X POST "${DEPLOY_HOOK}")
+          echo "HTTP ${status}"
+          cat response.txt
+          if [ "${status}" -ge 300 ]; then
+            echo "::error::Deploy hook retornou HTTP ${status}"
+            exit 1
+          fi
