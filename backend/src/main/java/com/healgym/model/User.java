@@ -2,6 +2,7 @@ package com.healgym.model;
 
 import com.healgym.util.Js;
 import com.healgym.util.Json;
+import com.healgym.validation.EmailRules;
 import com.healgym.validation.TrainingProfile;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -13,7 +14,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.regex.Pattern;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -99,8 +99,6 @@ public class User {
   public static final List<String> FITNESS_LEVELS =
       Arrays.asList("iniciante", "intermediario", "avancado");
 
-  private static final Pattern EMAIL_PATTERN =
-      Pattern.compile("^\\w+([.-]?\\w+)*@\\w+([.-]?\\w+)*(\\.\\w{2,3})+$");
   private static final BCryptPasswordEncoder ENCODER =
       new BCryptPasswordEncoder(BCryptPasswordEncoder.BCryptVersion.$2A, 12);
   private static final SecureRandom RANDOM = new SecureRandom();
@@ -218,7 +216,7 @@ public class User {
     if (email == null || email.isEmpty()) {
       throw new ValidationFailure("E-mail é obrigatório");
     }
-    if (!EMAIL_PATTERN.matcher(email).find()) {
+    if (!EmailRules.isEmail(email)) {
       throw new ValidationFailure("Por favor, insira um e-mail válido");
     }
 
