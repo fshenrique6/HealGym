@@ -1,6 +1,6 @@
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { FiTarget, FiUser } from 'react-icons/fi';
+import { FiActivity, FiTarget, FiUser } from 'react-icons/fi';
 import { GiMuscleUp } from 'react-icons/gi';
 import { useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
@@ -73,6 +73,14 @@ const LandingPage = () => {
             <FeatureCardTitle>Acompanhamento</FeatureCardTitle>
             <FeatureCardText>
               Acompanhe sua evolução com ajustes em tempo real.
+            </FeatureCardText>
+          </FeatureCard>
+
+          <FeatureCard whileHover={{ y: -10 }} transition={{ type: 'spring', stiffness: 300 }}>
+            <FiActivity size="min(5vw, 40px)" color="var(--accent)" />
+            <FeatureCardTitle>Dieta Especializada</FeatureCardTitle>
+            <FeatureCardText>
+              Planos alimentares personalizados para potencializar seus resultados.
             </FeatureCardText>
           </FeatureCard>
 
@@ -226,12 +234,20 @@ const FeatureTitle = styled.h2`
 
 const FeatureGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: min(4vw, 30px);
   width: 95%;
   margin: 0;
   padding: 0;
   cursor: default;
+
+  @media (max-width: 1100px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: 640px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
 `;
 
 const FeatureCard = styled(motion.div)`
@@ -242,11 +258,20 @@ const FeatureCard = styled(motion.div)`
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(198, 169, 100, 0.1);
   backdrop-filter: blur(10px);
+  width: 100%;
+  min-width: 0;
   aspect-ratio: 1 / 1;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  box-sizing: border-box;
+
+  @media (max-width: 1500px) {
+    aspect-ratio: auto;
+    height: 100%;
+    min-height: 22rem;
+  }
 
   &:hover {
     border-color: var(--accent);
