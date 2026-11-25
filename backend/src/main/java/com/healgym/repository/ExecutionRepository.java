@@ -7,7 +7,10 @@ import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.ReplaceOptions;
 import com.mongodb.client.model.Sorts;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
@@ -69,6 +72,18 @@ public class ExecutionRepository {
       resultado.add(documento);
     }
     return resultado;
+  }
+
+  public Map<ObjectId, Document> porTreinos(ObjectId user, Collection<ObjectId> workouts) {
+    Map<ObjectId, Document> mapa = new LinkedHashMap<>();
+    if (workouts.isEmpty()) {
+      return mapa;
+    }
+    for (Document execucao :
+        collection.find(Filters.and(Filters.eq("user", user), Filters.in("workout", workouts)))) {
+      mapa.put(execucao.getObjectId("workout"), execucao);
+    }
+    return mapa;
   }
 
   public long count(ObjectId user, ObjectId workout) {

@@ -140,6 +140,26 @@ public final class ExerciseAnatomy {
     return Collections.unmodifiableList(Arrays.asList(valores));
   }
 
+  /**
+   * Atributos usados pelas limitações autodeclaradas. O texto mostrado ao usuário descreve estes
+   * mesmos critérios. Não são diagnóstico e não afirmam que a alternativa seja segura para uma lesão.
+   */
+  static void classificarRestricao(ExerciseDatabase.Exercise e) {
+    e.troncoInclinadoComCarga =
+        "lats_espessura-remada-curvada-com-barra".equals(e.id)
+            || "posterior-crucifixo-inverso-com-halteres".equals(e.id)
+            || "posteriores-stiff-com-halteres".equals(e.id);
+    e.cargaAxial =
+        "quadriceps_completo-agachamento-com-barra".equals(e.id)
+            || "quadriceps_completo-agachamento-no-smith".equals(e.id)
+            || "anterior-desenvolvimento-com-barra".equals(e.id);
+    e.bracosAcimaDaCabeca =
+        "desenvolvimento".equals(e.padrao)
+            || "puxada_vertical".equals(e.padrao)
+            || "triceps_overhead".equals(e.padrao);
+    e.flexaoProfundaJoelho = "agachamento".equals(e.padrao);
+  }
+
   static void aplicar(ExerciseDatabase.Exercise e) {
     String n = e.nome.toLowerCase(Locale.ROOT);
     List<String> eq = e.equipamento;
@@ -153,6 +173,7 @@ public final class ExerciseAnatomy {
       }
     }
     e.tipoCarga = tipoCarga(n, barra, halteres, maquina, polia);
+    classificarRestricao(e);
     switch (e.padrao) {
       case "supino_horizontal":
         definir(e, "peitoral", l("triceps", "deltoide_anterior"), l("peitoral_esternocostal"),

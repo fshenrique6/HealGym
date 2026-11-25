@@ -15,8 +15,10 @@ import java.util.Set;
  * conservador. Dias disponíveis e duração preferida não alteram rank nem modo: o planejador
  * semanal é quem os lê.
  *
- * <p>Rank 1 e 2 são os mesmos já usados pelo gerador (iniciante e intermediário). O rank 3 só
- * aparece quando o perfil antigo traz fitnessLevel avançado e a experiência nova está ausente.
+ * <p>Rank 1 é o nível técnico inicial. Rank 2 é um a dois anos com treino regular. Rank 3 é dois
+ * anos ou mais com treino regular, o mesmo nível técnico do motor novo, e também o fitnessLevel
+ * avançado quando a experiência nova está ausente. Quem declarou pausa ou treino irregular
+ * permanece no rank 1, para o volume não subir só pela experiência antiga.
  */
 public final class PrescricaoPerfil {
 
@@ -119,7 +121,13 @@ public final class PrescricaoPerfil {
   }
 
   static int rankDaExperiencia(String experiencia, String frequencia) {
-    if (EXPERIENCIA_PODE_SUBIR.contains(experiencia) && FREQUENCIA_REGULAR.contains(frequencia)) {
+    if (!FREQUENCIA_REGULAR.contains(frequencia)) {
+      return RANK_CONSERVADOR;
+    }
+    if ("de_2_a_5_anos".equals(experiencia) || "mais_de_5_anos".equals(experiencia)) {
+      return 3;
+    }
+    if ("de_1_a_2_anos".equals(experiencia)) {
       return RANK_REGULAR;
     }
     return RANK_CONSERVADOR;

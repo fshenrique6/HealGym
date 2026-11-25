@@ -6,20 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import api from '../services/api';
 import { validatePhysicalProfileField } from '../utils/profileValidation';
 import { BODY_TYPE_OPTIONS, GENDER_OPTIONS } from '../utils/profileOptions';
-import CamposPerfilTreino from './CamposPerfilTreino';
-import { payloadTreino, validarCampoTreino, confirmarTreinoSalvo } from '../utils/perfilTreino';
 
-const CAMPOS_ETAPA = [
-  ['gender', 'height', 'weight', 'bodyType', 'age'],
-  ['trainingGoal', 'trainingExperience'],
-  ['recentFrequency', 'availableDays', 'preferredSessionMinutes'],
-];
-
-const LEGENDAS_ETAPA = [
-  'Dados pessoais',
-  'Objetivo e experiência',
-  'Rotina de treinamento',
-];
+const CAMPOS_PESSOAIS = ['gender', 'height', 'weight', 'bodyType', 'age'];
 
 const variantesEtapa = {
   enter: (direcao) => ({ opacity: 0, x: direcao * 36 }),
@@ -33,19 +21,12 @@ const ProfileSetupPage = () => {
   const navigate = useNavigate();
   const { updateUser, logout } = useAuth();
 
-  const [etapa, setEtapa] = useState(0);
-  const [direcao, setDirecao] = useState(1);
   const [formData, setFormData] = useState({
     gender: '',
     height: '',
     weight: '',
     bodyType: '',
     age: '',
-    trainingGoal: '',
-    trainingExperience: '',
-    recentFrequency: '',
-    availableDays: '',
-    preferredSessionMinutes: '',
   });
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
@@ -79,24 +60,21 @@ const ProfileSetupPage = () => {
     }
   }, [submitMessage]);
 
-  const validateField = (name, value) =>
-    CAMPOS_ETAPA[0].includes(name)
-      ? validatePhysicalProfileField(name, value)
-      : validarCampoTreino(name, value);
+  const validateField = (name, value) => validatePhysicalProfileField(name, value);
 
-  const validarEtapa = (indice) => {
+  const validarPessoal = () => {
     const novos = {};
-    CAMPOS_ETAPA[indice].forEach((campo) => {
+    CAMPOS_PESSOAIS.forEach((campo) => {
       const erro = validateField(campo, formData[campo]);
       if (erro) novos[campo] = erro;
     });
     setTouched((atual) => ({
       ...atual,
-      ...Object.fromEntries(CAMPOS_ETAPA[indice].map((campo) => [campo, true])),
+      ...Object.fromEntries(CAMPOS_PESSOAIS.map((campo) => [campo, true])),
     }));
     setErrors((atual) => {
       const seguinte = { ...atual };
-      CAMPOS_ETAPA[indice].forEach((campo) => {
+      CAMPOS_PESSOAIS.forEach((campo) => {
         if (novos[campo]) seguinte[campo] = novos[campo];
         else delete seguinte[campo];
       });
@@ -115,12 +93,6 @@ const ProfileSetupPage = () => {
     }
   };
 
-  const alterarTreino = (name, value) => {
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    setTouched((prev) => ({ ...prev, [name]: true }));
-    setErrors((prev) => ({ ...prev, [name]: validateField(name, value) }));
-  };
-
   const handleBlur = (e) => {
     const { name, value } = e.target;
     setTouched((prev) => ({ ...prev, [name]: true }));
@@ -128,36 +100,10 @@ const ProfileSetupPage = () => {
     setErrors((prev) => ({ ...prev, [name]: newError }));
   };
 
-  const avancar = () => {
-    if (validarEtapa(etapa)) {
-      setDirecao(1);
-      setEtapa((atual) => Math.min(atual + 1, CAMPOS_ETAPA.length - 1));
-    }
-  };
-
-  const voltar = () => {
-    setSubmitMessage('');
-    setDirecao(-1);
-    setEtapa((atual) => Math.max(atual - 1, 0));
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (etapa < CAMPOS_ETAPA.length - 1) {
-      avancar();
-      return;
-    }
-
-    let primeiroInvalido = -1;
-    CAMPOS_ETAPA.forEach((_, indice) => {
-      if (!validarEtapa(indice) && primeiroInvalido < 0) {
-        primeiroInvalido = indice;
-      }
-    });
-    if (primeiroInvalido >= 0) {
-      setDirecao(primeiroInvalido > etapa ? 1 : -1);
-      setEtapa(primeiroInvalido);
+    if (!validarPessoal()) {
       return;
     }
 
@@ -175,14 +121,19 @@ const ProfileSetupPage = () => {
       weight: parseFloat(formData.weight),
       bodyType: formData.bodyType,
       age: parseInt(formData.age, 10),
-      ...payloadTreino(formData),
     };
 
     try {
       const response = await api.setupProfile(enviado);
-      const divergencia = confirmarTreinoSalvo(enviado, response.user);
-      if (divergencia) {
-        throw new Error(divergencia);
+      const perfil = response.user?.profile;
+      const pessoalConfere =
+        response.user?.profileSetupCompleted &&
+        perfil?.gender === enviado.gender &&
+        Number(perfil?.height) === enviado.height &&
+        Number(perfil?.weight) === enviado.weight &&
+        perfil?.bodyType === enviado.bodyType;
+      if (!pessoalConfere) {
+        throw new Error('O servidor não confirmou os dados pessoais.');
       }
       updateUser(response.user);
       navigate('/dashboard');
@@ -218,17 +169,12 @@ const ProfileSetupPage = () => {
         transition={{ duration: 0.8 }}
       >
           <FormTitle>Complete seu Perfil</FormTitle>
-          <Passos>
-            {LEGENDAS_ETAPA.map((legenda, indice) => (
-              <Passo key={legenda} $ativa={indice === etapa} $feita={indice < etapa} />
-            ))}
-          </Passos>
 
           <FormContainer onSubmit={handleSubmit} noValidate>
-            <AnimatePresence mode="wait" custom={direcao} initial={false}>
+            <AnimatePresence mode="wait" custom={1} initial={false}>
               <EtapaConteudo
-                key={etapa}
-                custom={direcao}
+                key="pessoal"
+                custom={1}
                 variants={variantesEtapa}
                 initial="enter"
                 animate="center"
@@ -236,12 +182,8 @@ const ProfileSetupPage = () => {
                 transition={transicaoEtapa}
               >
             <FormSubtitle>
-              <div>
-                Etapa {etapa + 1} de {CAMPOS_ETAPA.length}
-              </div>
-              <div>{LEGENDAS_ETAPA[etapa]}</div>
+              <div>Dados pessoais</div>
             </FormSubtitle>
-            {etapa === 0 && (
               <>
             <InputGroup>
               <SelectWrapper>
@@ -386,46 +328,17 @@ const ProfileSetupPage = () => {
               </AnimatePresence>
             </InputGroup>
               </>
-            )}
-
-            {etapa > 0 && (
-              <CamposPerfilTreino
-                parte={etapa === 1 ? 'objetivo' : 'rotina'}
-                valores={formData}
-                erros={errors}
-                mostrarErros={touched}
-                onChange={alterarTreino}
-              />
-            )}
               </EtapaConteudo>
             </AnimatePresence>
 
             <ButtonGroup>
-              <AnimatePresence initial={false}>
-                {etapa > 0 && (
-                  <BackButton
-                    key="voltar"
-                    type="button"
-                    onClick={voltar}
-                    disabled={isSubmitting}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -10 }}
-                    transition={{ duration: 0.2 }}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    Voltar
-                  </BackButton>
-                )}
-              </AnimatePresence>
               <SubmitButton
                 type="submit"
                 disabled={isSubmitting}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
-                {isSubmitting ? 'Salvando...' : etapa < 2 ? 'Continuar' : 'Salvar perfil'}
+                {isSubmitting ? 'Salvando...' : 'Salvar perfil'}
               </SubmitButton>
             </ButtonGroup>
 
@@ -721,46 +634,6 @@ const ButtonGroup = styled.div`
 
 const EtapaConteudo = styled(motion.div)`
   width: 100%;
-`;
-
-const BackButton = styled(motion.button)`
-  flex: 0.7;
-  padding: 16px 12px;
-  background: transparent;
-  color: var(--white);
-  border: 1px solid rgba(198, 169, 100, 0.45);
-  border-radius: 5px;
-  font-family: 'Cormorant', serif;
-  font-size: 1.05rem;
-  letter-spacing: 0;
-  text-transform: none;
-  transition: border-color 0.3s ease;
-
-  &:hover {
-    border-color: var(--accent);
-  }
-
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-`;
-
-const Passos = styled.div`
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-  margin: -8px 0 18px;
-`;
-
-const Passo = styled.span`
-  width: 36px;
-  height: 3px;
-  border-radius: 2px;
-  background: ${(props) =>
-    props.$ativa || props.$feita ? 'var(--accent)' : 'rgba(255, 255, 255, 0.16)'};
-  opacity: ${(props) => (props.$ativa ? 1 : 0.7)};
-  transition: background 0.3s ease;
 `;
 
 const SubmitButton = styled(motion.button)`

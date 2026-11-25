@@ -70,7 +70,7 @@ class ProgramaSemanalTest {
     ProgramaSemanal.Programa consistente = semana(4, 60, "hipertrofia", "de_2_a_5_anos", "semanal_3_4");
     ProgramaSemanal.Programa parado = semana(4, 60, "hipertrofia", "mais_de_5_anos", "nenhuma");
     assertEquals(1, iniciante.rank);
-    assertEquals(2, consistente.rank);
+    assertEquals(3, consistente.rank);
     assertEquals(1, parado.rank);
     assertEquals("8-12", principal(iniciante).get("repeticoes"));
     assertEquals("6-10", principal(consistente).get("repeticoes"));
@@ -85,7 +85,7 @@ class ProgramaSemanalTest {
     ProgramaSemanal.Programa resistencia = semana(3, 60, "resistencia", "nunca", "nenhuma");
     assertEquals(hipertrofia.estrategia, forca.estrategia);
     assertEquals(hipertrofia.estrategia, resistencia.estrategia);
-    assertEquals("6-10", principal(forca).get("repeticoes"));
+    assertEquals("6-8", principal(forca).get("repeticoes"));
     assertEquals("12-15", principal(resistencia).get("repeticoes"));
     assertNotEquals("4-6", principal(forca).get("repeticoes"));
     assertNotEquals(ProgramaSemanal.assinatura(hipertrofia), ProgramaSemanal.assinatura(forca));

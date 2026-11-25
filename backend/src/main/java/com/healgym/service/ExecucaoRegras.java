@@ -125,6 +125,7 @@ public final class ExecucaoRegras {
     for (Document existente : existentes == null ? Collections.<Document>emptyList() : existentes) {
       atuais.put(existente.getString("uid"), existente);
     }
+    String primeiroUid = itensTreino.isEmpty() ? null : uidDe(itensTreino.get(0), 0);
     Set<String> vistos = new LinkedHashSet<>();
     for (Object bruto : (List<Object>) entrada) {
       if (!(bruto instanceof Map)) {
@@ -144,14 +145,20 @@ public final class ExecucaoRegras {
         throw new Invalido("Exercício não pertence a este treino");
       }
       Document anterior = atuais.get(uid);
-      atuais.put(uid, documento(uid, item, registro.get("series"), anterior, agora));
+      atuais.put(uid, documento(uid, item, registro, anterior, agora, permiteAquecimento(item, uid, primeiroUid)));
     }
     return new ArrayList<>(atuais.values());
   }
 
   @SuppressWarnings("unchecked")
   static Document documento(
-      String uid, Map<String, Object> item, Object seriesBrutas, Document anterior, Date agora) {
+      String uid,
+      Map<String, Object> item,
+      Map<String, Object> registro,
+      Document anterior,
+      Date agora,
+      boolean permiteAquecimento) {
+    Object seriesBrutas = registro.get("series");
     if (!(seriesBrutas instanceof List)) {
       throw new Invalido("series deve ser uma lista");
     }
@@ -198,13 +205,65 @@ public final class ExecucaoRegras {
       series.add(doc);
     }
     series.sort((a, b) -> Integer.compare(a.getInteger("numero"), b.getInteger("numero")));
-    return new Document("uid", uid)
-        .append("exercicioId", item.get("exercicioId"))
-        .append("nome", item.get("nome"))
-        .append("tipoCarga", item.get("tipoCarga"))
-        .append("seriesPrescritas", item.get("series"))
-        .append("repeticoesPrescritas", item.get("repeticoes"))
-        .append("series", series);
+    Document doc =
+        new Document("uid", uid)
+            .append("exercicioId", item.get("exercicioId"))
+            .append("nome", item.get("nome"))
+            .append("tipoCarga", item.get("tipoCarga"))
+            .append("seriesPrescritas", item.get("series"))
+            .append("repeticoesPrescritas", item.get("repeticoes"))
+            .append("series", series);
+    Document aquecimento = aquecimentoDe(registro, anterior, agora, permiteAquecimento);
+    if (aquecimento != null) {
+      doc.append("aquecimento", aquecimento);
+    }
+    return doc;
+  }
+
+  /**
+   * Ficha antiga só gravava a série leve no primeiro exercício. Ficha nova libera o registro em
+   * qualquer exercício que tenha séries de aproximação. Não reescreve o que já foi concluído.
+   */
+  private static boolean permiteAquecimento(
+      Map<String, Object> item, String uid, String primeiroUid) {
+    Object bruto = item.get("seriesAproximacao");
+    int aproximacao = bruto instanceof Number ? ((Number) bruto).intValue() : 0;
+    return uid.equals(primeiroUid) || aproximacao > 0;
+  }
+
+  /** Série leve à parte. Não entra na lista de séries efetivas nem na progressão de carga. */
+  @SuppressWarnings("unchecked")
+  private static Document aquecimentoDe(
+      Map<String, Object> registro, Document anterior, Date agora, boolean permitir) {
+    if (!permitir) {
+      return null;
+    }
+    if (!registro.containsKey("aquecimento")) {
+      Object guardado = anterior == null ? null : anterior.get("aquecimento");
+      return guardado instanceof Document ? (Document) guardado : null;
+    }
+    Object bruto = registro.get("aquecimento");
+    if (bruto == null) {
+      return null;
+    }
+    if (!(bruto instanceof Map)) {
+      throw new Invalido("Aquecimento inválido");
+    }
+    Map<String, Object> mapa = (Map<String, Object>) bruto;
+    boolean concluida = Boolean.TRUE.equals(mapa.get("concluida"));
+    Document doc = new Document();
+    doc.append("carga", carga(mapa.get("carga")));
+    doc.append("repeticoes", inteiro(mapa.get("repeticoes"), MAX_REPETICOES, "Repetições"));
+    doc.append("concluida", concluida);
+    Object quando = null;
+    if (concluida && anterior != null && anterior.get("aquecimento") instanceof Document) {
+      Document velho = (Document) anterior.get("aquecimento");
+      if (Boolean.TRUE.equals(velho.get("concluida"))) {
+        quando = velho.get("concluidaEm");
+      }
+    }
+    doc.append("concluidaEm", quando instanceof Date ? quando : concluida ? agora : null);
+    return doc;
   }
 
   @SuppressWarnings("unchecked")
@@ -219,6 +278,30 @@ public final class ExecucaoRegras {
       }
     }
     return resultado;
+  }
+
+  /** Se o usuário já começou a sessão (iniciou o cronômetro ou registrou alguma série). */
+  public static boolean iniciada(Document execucao) {
+    if (execucao == null) {
+      return false;
+    }
+    if ("em_andamento".equals(execucao.get("status")) || execucao.get("iniciadoEm") != null) {
+      return true;
+    }
+    for (Document entrada : entradas(execucao)) {
+      if (entrada.get("series") instanceof List && !((List<?>) entrada.get("series")).isEmpty()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public static int seriesConcluidasNaSessao(Document execucao) {
+    int total = 0;
+    for (Document entrada : entradas(execucao)) {
+      total += seriesConcluidas(entrada).size();
+    }
+    return total;
   }
 
   public static boolean temSerieConcluida(Document execucao, String uid) {
@@ -251,7 +334,12 @@ public final class ExecucaoRegras {
     Integer repsNaMelhorCarga = null;
     Integer maisRepeticoes = null;
     Double cargaNasMaisRepeticoes = null;
-    for (Document execucao : execucoesRecentes) {
+    List<Document> ordenadas = new ArrayList<>();
+    if (execucoesRecentes != null) {
+      ordenadas.addAll(execucoesRecentes);
+      ordenadas.sort((a, b) -> Long.compare(millisRealizacao(b), millisRealizacao(a)));
+    }
+    for (Document execucao : ordenadas) {
       for (Document entrada : entradas(execucao)) {
         boolean mesmo =
             exercicioId.equals(entrada.getString("exercicioId"))
@@ -312,6 +400,19 @@ public final class ExecucaoRegras {
     return resultado;
   }
 
+  /** Data em que o treino aconteceu. Uma correção posterior não conta como treino novo. */
+  private static long millisRealizacao(Document execucao) {
+    if (execucao == null) {
+      return 0L;
+    }
+    Object fim = execucao.get("finalizadoEm");
+    if (fim instanceof Date) {
+      return ((Date) fim).getTime();
+    }
+    Object atualizado = execucao.get("updatedAt");
+    return atualizado instanceof Date ? ((Date) atualizado).getTime() : 0L;
+  }
+
   private static Double numeroOuNulo(Object valor) {
     return valor instanceof Number ? ((Number) valor).doubleValue() : null;
   }
@@ -351,6 +452,11 @@ public final class ExecucaoRegras {
           return null;
         }
       }
+    }
+    if (ProgressaoCarga.pausaLonga(sessoes.get(0))) {
+      return "Faz cerca de "
+          + ProgressaoCarga.PAUSA_DIAS
+          + " dias ou mais desde a última sessão registrada. Retome com a carga anterior ou um pouco menos e reavalie antes de progredir.";
     }
     if (cargaReferencia == null || cargaReferencia == 0) {
       return "Você completou o topo da faixa nas duas últimas sessões. Se a execução continuou sólida, considere uma variação um pouco mais difícil. A decisão é sua.";

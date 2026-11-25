@@ -42,6 +42,10 @@ public class Db {
     return database.getCollection("body_measurements");
   }
 
+  public MongoCollection<Document> rotinas() {
+    return database.getCollection("training_routines");
+  }
+
   public void ping() {
     database.runCommand(new Document("ping", 1));
   }
@@ -62,6 +66,11 @@ public class Db {
                   Indexes.ascending("createdAt")));
     } catch (RuntimeException e) {
       System.err.println("Erro ao criar índices: " + e.getMessage());
+    }
+    try {
+      new RotinaRepository(rotinas(), workouts(), executions()).ensureIndexes();
+    } catch (RuntimeException e) {
+      System.err.println("Erro ao criar índices das rotinas: " + e.getMessage());
     }
   }
 

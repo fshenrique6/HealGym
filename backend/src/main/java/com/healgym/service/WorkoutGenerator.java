@@ -128,9 +128,21 @@ public final class WorkoutGenerator {
       String modo,
       int seed,
       int variante) {
+    return montar(grupamento, tempoMinutos, experiencia, modo, seed, variante, null);
+  }
+
+  public static Session montar(
+      String grupamento,
+      double tempoMinutos,
+      int experiencia,
+      String modo,
+      int seed,
+      int variante,
+      com.healgym.service.rotina.PreferenciasTreino preferencias) {
     if (SessionPlanner.suporta(grupamento)) {
       SessionPlanner.Plano plano =
-          SessionPlanner.planejar(grupamento, tempoMinutos, experiencia, modo, seed, variante);
+          SessionPlanner.planejar(
+              grupamento, tempoMinutos, experiencia, modo, seed, variante, preferencias);
       return new Session(
           plano.exercicios,
           plano.segundos,
@@ -139,18 +151,23 @@ public final class WorkoutGenerator {
           plano.observacoes,
           plano.problemas);
     }
-    return montarLegado(grupamento, tempoMinutos, experiencia, modo, seed);
+    return montarLegado(grupamento, tempoMinutos, experiencia, modo, seed, preferencias);
   }
 
   private static Session montarLegado(
-      String grupamento, double tempoMinutos, int experiencia, String modo, int seed) {
+      String grupamento,
+      double tempoMinutos,
+      int experiencia,
+      String modo,
+      int seed,
+      com.healgym.service.rotina.PreferenciasTreino preferencias) {
     int orcamento = (int) Math.floor(tempoMinutos * 60.0);
     List<Map<String, Object>> escolhidos = new ArrayList<>();
     Set<String> usados = new LinkedHashSet<>();
     for (String[] slot : plano(grupamento, tempoMinutos)) {
       boolean essencial = "1".equals(slot[2]);
       ExerciseDatabase.Exercise exercicio =
-          escolher(slot[0], slot[1], experiencia, seed + escolhidos.size() * 17, usados);
+          escolher(slot[0], slot[1], experiencia, seed + escolhidos.size() * 17, usados, preferencias);
       if (exercicio == null) {
         continue;
       }
@@ -222,7 +239,12 @@ public final class WorkoutGenerator {
   }
 
   private static ExerciseDatabase.Exercise escolher(
-      String grupo, String padrao, int experiencia, int seed, Set<String> usados) {
+      String grupo,
+      String padrao,
+      int experiencia,
+      int seed,
+      Set<String> usados,
+      com.healgym.service.rotina.PreferenciasTreino preferencias) {
     Map<String, List<ExerciseDatabase.Exercise>> base = ExerciseDatabase.DATABASE.get(grupo);
     if (base == null) {
       return null;
@@ -234,6 +256,9 @@ public final class WorkoutGenerator {
           continue;
         }
         if (exercicio.fundamento == 0 || exercicio.dificuldade > (experiencia >= 3 ? 3 : 2)) {
+          continue;
+        }
+        if (preferencias != null && !preferencias.permite(exercicio)) {
           continue;
         }
         candidatos.add(exercicio);

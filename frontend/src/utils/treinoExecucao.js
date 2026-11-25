@@ -1,3 +1,5 @@
+import { musculoPrincipalLegivel } from './detalheExercicio';
+
 const ROTULOS_EQUIPAMENTO = {
   banco: 'Banco',
   barra: 'Barra',
@@ -57,9 +59,7 @@ export function rotuloCarga(exercicio) {
 }
 
 export function porcaoLegivel(exercicio) {
-  const texto = exercicio?.porcaoMuscular;
-  if (!texto) return '';
-  return String(texto).includes('_') ? humanizar(texto) : texto;
+  return musculoPrincipalLegivel(exercicio);
 }
 
 export function uidDoExercicio(exercicio, indice) {

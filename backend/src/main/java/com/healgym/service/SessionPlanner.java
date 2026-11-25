@@ -1,5 +1,6 @@
 package com.healgym.service;
 
+import com.healgym.service.rotina.PreferenciasTreino;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -261,11 +262,22 @@ public final class SessionPlanner {
 
   public static Plano planejar(
       String grupamento, double tempo, int experiencia, String modo, int seed, int variante) {
+    return planejar(grupamento, tempo, experiencia, modo, seed, variante, null);
+  }
+
+  public static Plano planejar(
+      String grupamento,
+      double tempo,
+      int experiencia,
+      String modo,
+      int seed,
+      int variante,
+      PreferenciasTreino preferencias) {
     Set<String> evitar = new LinkedHashSet<>();
     if (variante > 0) {
       for (int anterior = 0; anterior < variante; anterior++) {
         for (Map<String, Object> item :
-            planejar(grupamento, tempo, experiencia, modo, seed, anterior).exercicios) {
+            planejar(grupamento, tempo, experiencia, modo, seed, anterior, preferencias).exercicios) {
           evitar.add(String.valueOf(item.get("exercicioId")));
         }
       }
@@ -283,7 +295,8 @@ public final class SessionPlanner {
       if (!slot.obrigatorio) {
         continue;
       }
-      Map<String, Object> item = criar(slot, estrutura, experiencia, modo, seed + indice * 7, itens, evitar, grupamento);
+      Map<String, Object> item =
+          criar(slot, estrutura, experiencia, modo, seed + indice * 7, itens, evitar, grupamento, preferencias);
       if (item != null) {
         itens.add(item);
       }
@@ -300,7 +313,8 @@ public final class SessionPlanner {
       if (segundosTotais(itens, tempo) >= alvo || itens.size() >= teto) {
         break;
       }
-      Map<String, Object> item = criar(slot, estrutura, experiencia, modo, seed + indice * 7, itens, evitar, grupamento);
+      Map<String, Object> item =
+          criar(slot, estrutura, experiencia, modo, seed + indice * 7, itens, evitar, grupamento, preferencias);
       if (item == null) {
         continue;
       }
@@ -349,6 +363,7 @@ public final class SessionPlanner {
     for (Map<String, Object> item : itens) {
       item.put("posicao", posicao++);
     }
+    marcarAquecimentoInicial(itens);
 
     int total = segundosTotais(itens, tempo);
     if (tempo <= 90 && total < alvo) {
@@ -356,10 +371,6 @@ public final class SessionPlanner {
           "A estimativa ficou abaixo da faixa planejada para "
               + (int) Math.round(tempo)
               + " min porque o volume desta sessão já atingiu o limite definido para o nível informado. O descanso não foi encurtado e não foram acrescentados exercícios repetidos para preencher o tempo.");
-    }
-    if (tempo > 90) {
-      observacoes.add(
-          "Em sessões longas, o limite é um volume recuperável, não ocupar todos os minutos escolhidos.");
     }
     List<String> problemas = validar(grupamento, itens, tempo, experiencia);
     return new Plano(itens, total, observacoes, problemas);
@@ -386,8 +397,9 @@ public final class SessionPlanner {
       int seed,
       List<Map<String, Object>> itens,
       Set<String> evitar,
-      String grupamento) {
-    ExerciseDatabase.Exercise exercicio = escolher(slot, experiencia, seed, itens, evitar);
+      String grupamento,
+      PreferenciasTreino preferencias) {
+    ExerciseDatabase.Exercise exercicio = escolher(slot, experiencia, seed, itens, evitar, preferencias);
     if (exercicio == null) {
       return null;
     }
@@ -422,6 +434,16 @@ public final class SessionPlanner {
 
   static ExerciseDatabase.Exercise escolher(
       Slot slot, int experiencia, int seed, List<Map<String, Object>> itens, Set<String> evitar) {
+    return escolher(slot, experiencia, seed, itens, evitar, null);
+  }
+
+  static ExerciseDatabase.Exercise escolher(
+      Slot slot,
+      int experiencia,
+      int seed,
+      List<Map<String, Object>> itens,
+      Set<String> evitar,
+      PreferenciasTreino preferencias) {
     Map<String, List<ExerciseDatabase.Exercise>> base = ExerciseDatabase.DATABASE.get(slot.grupo);
     if (base == null) {
       return null;
@@ -454,6 +476,9 @@ public final class SessionPlanner {
           }
         }
         if (exercicio.dificuldade > (experiencia >= 3 ? 3 : 2)) {
+          continue;
+        }
+        if (preferencias != null && !preferencias.permite(exercicio)) {
           continue;
         }
         if ("agachamento".equals(slot.padrao)) {
@@ -551,6 +576,34 @@ public final class SessionPlanner {
     return Collections.emptyList();
   }
 
+  private static String grupoMuscular(String musculo) {
+    if (musculo == null || "null".equals(musculo)) {
+      return null;
+    }
+    switch (musculo) {
+      case "peitoral":
+        return "peito";
+      case "dorsal":
+      case "costas_medias":
+        return "costas";
+      case "biceps":
+      case "braquial":
+        return "biceps";
+      case "deltoide_anterior":
+      case "deltoide_lateral":
+      case "deltoide_posterior":
+      case "triceps":
+      case "quadriceps":
+      case "isquiotibiais":
+      case "gluteos":
+      case "panturrilhas":
+      case "core":
+        return musculo;
+      default:
+        return null;
+    }
+  }
+
   static String tipoEquipamento(List<String> equipamento) {
     if (equipamento.contains("maquina")) {
       return "maquina";
@@ -598,13 +651,13 @@ public final class SessionPlanner {
       rir = null;
     } else if (exercicio.composto) {
       if ("forca".equals(modo) && experiencia <= 1) {
-        // Força no rank 1: faixa moderada e RIR 2-3. Não usa 4-6 nem falha.
-        repeticoes = principal ? "6-10" : "8-10";
-        descanso = 120;
+        // Mesma faixa do motor novo para quem ainda está no nível técnico 1.
+        repeticoes = principal ? "6-8" : "8-10";
+        descanso = principal ? 150 : 120;
         rir = "2-3";
       } else if ("forca".equals(modo) && principal) {
         repeticoes = "4-6";
-        descanso = 150;
+        descanso = 180;
         rir = "2-3";
       } else if ("forca".equals(modo)) {
         repeticoes = "6-8";
@@ -839,6 +892,22 @@ public final class SessionPlanner {
     }
   }
 
+  /**
+   * Uma série preparatória no primeiro exercício da sessão. As séries efetivas permanecem no campo
+   * {@code series} e continuam sendo o volume contabilizado.
+   */
+  public static void marcarAquecimentoInicial(List<Map<String, Object>> itens) {
+    if (itens == null) {
+      return;
+    }
+    for (int i = 0; i < itens.size(); i++) {
+      Map<String, Object> item = itens.get(i);
+      if (item != null) {
+        item.put("seriesAproximacao", i == 0 ? 1 : 0);
+      }
+    }
+  }
+
   public static int aquecimentoSegundos(double tempo) {
     return tempo < 45 ? 180 : 300;
   }
@@ -1014,6 +1083,16 @@ public final class SessionPlanner {
 
   public static List<Map<String, Object>> alternativas(
       Map<String, Object> atual, List<Map<String, Object>> itens, double tempo, int experiencia, String modo) {
+    return alternativas(atual, itens, tempo, experiencia, modo, null);
+  }
+
+  public static List<Map<String, Object>> alternativas(
+      Map<String, Object> atual,
+      List<Map<String, Object>> itens,
+      double tempo,
+      int experiencia,
+      String modo,
+      PreferenciasTreino preferencias) {
     String padrao = String.valueOf(atual.get("padrao"));
     Set<String> nomesNaSessao = new LinkedHashSet<>();
     for (Map<String, Object> item : itens) {
@@ -1032,6 +1111,13 @@ public final class SessionPlanner {
         continue;
       }
       if (exercicio.fundamento == 0 || exercicio.dificuldade > (experiencia >= 3 ? 3 : 2)) {
+        continue;
+      }
+      if (preferencias != null && !preferencias.permite(exercicio)) {
+        continue;
+      }
+      String grupoAtual = grupoMuscular(String.valueOf(atual.get("musculoPrincipalCodigo")));
+      if (grupoAtual != null && !grupoAtual.equals(grupoMuscular(exercicio.principal))) {
         continue;
       }
       if ("agachamento".equals(padrao) && exercicio.unilateral != Boolean.TRUE.equals(atual.get("unilateral"))) {

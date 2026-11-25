@@ -123,7 +123,7 @@ const ProgramaSemanalPainel = ({ onAtualizado, onPrograma }) => {
 
   const iniciar = async (sessao) => {
     if (sessao.treinoId) {
-      navigate(`/treino/${sessao.treinoId}/executar`);
+      navigate(`/treino/${sessao.treinoId}`);
       return;
     }
     await salvar(sessao.codigo);

@@ -1,20 +1,16 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import styled from 'styled-components';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { destinoVolta, estadoOrigem, lerConsulta, rotuloDeOrigem } from '../utils/navegacaoTreino';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   FiArrowLeft,
-  FiActivity,
-  FiClock,
   FiTrash2,
   FiCheck,
   FiPlay,
-  FiCheckCircle,
   FiRepeat,
   FiChevronDown,
   FiChevronUp,
-  FiLayers,
-  FiTarget,
   FiAlertCircle,
 } from 'react-icons/fi';
 import api from '../services/api';
@@ -29,69 +25,97 @@ import {
   lerCarga,
   lerRepeticoes,
   montarPayload,
-  porcaoLegivel,
   registrosDaExecucao,
   resumoSessao,
-  rotuloCarga,
-  rotuloDivisao,
-  rotuloEquipamento,
   seriesDoRegistro,
   uidDoExercicio,
 } from '../utils/treinoExecucao';
+import { orientacaoDeCarga, textoAquecimento } from '../utils/orientacaoFicha';
+import { simplificarTexto, textoReserva } from '../utils/rotina';
+import { observacaoVisivel } from '../utils/observacaoFicha';
+import { seriesPorGrupo } from '../utils/analiseFicha';
+import DetalhesExercicio from './treino/DetalhesExercicio';
+import RotuloDestaque from './treino/RotuloDestaque';
+import { CURVA } from './treino/movimento';
 import {
-  Container,
-  Header,
-  Logo,
-  BackButton,
-  MainContent,
-  TreinoDisplay,
-  TreinoHeader,
-  TreinoTitulo,
-  MetaTag,
-  TreinoObjetivo,
-  ActionButtons,
-  RealizadoBadge,
-  ExerciciosList,
-  ExercicioCard,
-  ExercicioNumero,
-  ExercicioInfo,
-  ExercicioDemo,
-  DemoVideo,
-  ExercicioNome,
-  PorcaoMuscular,
-  Tecnica,
-  Equipamentos,
-  ResumoSection,
-  ResumoTitulo,
-  ResumoTexto,
-  TimerSection,
-  IniciarTreinoButton,
-  ExercicioHeader,
-  SeriesProgress,
-  SeriesProgressInfo,
-  SeriesProgressLabel,
-  SeriesProgressPercentual,
-  SeriesProgressBar,
-  SeriesProgressFill,
-} from './treinoEstilos';
+  Acoes,
+  Aviso,
+  BotaoPrimario,
+  BotaoRetorno,
+  BotaoTexto,
+  Conteudo,
+  Marca,
+  Nota,
+  Pagina,
+  Surge,
+  TituloPagina,
+  Topo,
+} from './treino/ui';
 import DialogoAcao from './DialogoAcao';
 import {
-  FichaMeta,
-  Observacoes,
-  BlocoTitulo,
-  PrescricaoLinha,
-  HistoricoLinha,
-  SugestaoTexto,
-  ComparacaoLinha,
-  FichaBotoes,
-  BotaoDiscreto,
-  TecnicaPainel,
   SalvamentoStatus,
   AlternativasLista,
   AlternativaItem,
 } from './treinoFichaEstilos';
 
+const passo = (reduzir) => ({ duration: reduzir ? 0 : 0.22, ease: CURVA });
+
+function textoDescanso(valor) {
+  const texto = String(valor ?? '').trim();
+  if (!texto) return '';
+  if (/descanso/i.test(texto)) return texto;
+  const segundos = texto.match(/^(\d+)\s*s$/i);
+  if (segundos) return `${segundos[1]} s de descanso`;
+  const minutos = texto.match(/^(\d+)\s*min$/i);
+  if (minutos) return `${minutos[1]} min de descanso`;
+  return texto;
+}
+
+function linhaDaPrescricao(exercicio) {
+  const partes = [];
+  const series = Number(exercicio.series);
+  if (series > 0) partes.push(`${series} ${series === 1 ? 'série' : 'séries'}`);
+  if (exercicio.repeticoes) partes.push(`${exercicio.repeticoes} repetições`);
+  const descanso = textoDescanso(exercicio.descanso);
+  if (descanso) partes.push(descanso);
+  return partes.join(' · ');
+}
+
+function resumoDaFicha(treino, totalSeries) {
+  const partes = [
+    `${treino.exercicios.length} ${treino.exercicios.length === 1 ? 'exercício' : 'exercícios'}`,
+    `${totalSeries} ${totalSeries === 1 ? 'série' : 'séries'}`,
+  ];
+  const reais = Number(treino.duracaoRealSegundos);
+  if (treino.realizado && reais > 0) {
+    partes.push(`${Math.max(1, Math.round(reais / 60))} min`);
+  } else if (treino.duracaoEstimadaMinutos) {
+    partes.push(`~${treino.duracaoEstimadaMinutos} min`);
+  }
+  return partes.join(' · ');
+}
+
 const ID_TREINO = /^[a-fA-F0-9]{24}$/;
+
+function idRetornado(resposta) {
+  const bruto = resposta?.data?.treinoId ?? resposta?.data?._id;
+  if (typeof bruto === 'string' && ID_TREINO.test(bruto)) return bruto;
+  if (bruto && typeof bruto.$oid === 'string' && ID_TREINO.test(bruto.$oid)) return bruto.$oid;
+  return '';
+}
+
+function treinoDaConsulta(consulta) {
+  return {
+    titulo: consulta.titulo,
+    exercicios: consulta.exercicios,
+    duracaoEstimadaMinutos: consulta.duracaoEstimadaMinutos || undefined,
+    observacoes: consulta.avisos,
+    realizado: false,
+    execucaoPermitida: false,
+    exclusaoPermitida: false,
+    bloqueioMensagem: consulta.bloqueio,
+  };
+}
 const ID_EXERCICIO = /^[a-z0-9-]{1,90}$/;
 
 const TEXTO_SALVAMENTO = {
@@ -103,6 +127,7 @@ const TEXTO_SALVAMENTO = {
 
 const TreinoGeradoPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
 
   const [treino, setTreino] = useState(null);
@@ -116,9 +141,13 @@ const TreinoGeradoPage = () => {
   const [progresso, setProgresso] = useState({});
   const [tecnicaAberta, setTecnicaAberta] = useState({});
   const [analiseAberta, setAnaliseAberta] = useState(false);
+  const [notasAbertas, setNotasAbertas] = useState(false);
+  const reduzir = useReducedMotion();
   const [troca, setTroca] = useState(null);
   const [sessaoAndamento, setSessaoAndamento] = useState(false);
   const [indoExecucao, setIndoExecucao] = useState(false);
+  const [ehConsulta, setEhConsulta] = useState(false);
+  const [podeIniciarConsulta, setPodeIniciarConsulta] = useState(false);
 
   const [modalAberto, setModalAberto] = useState(false);
   const [modalConfig, setModalConfig] = useState({
@@ -132,6 +161,7 @@ const TreinoGeradoPage = () => {
   const registrosRef = useRef({});
   const filaSalvamentoRef = useRef(Promise.resolve());
   const treinoRef = useRef(null);
+  const codigoConsultaRef = useRef('');
 
   useEffect(() => {
     treinoRef.current = treino;
@@ -166,13 +196,26 @@ const TreinoGeradoPage = () => {
     setSalvamento('');
     setProgresso({});
     setTecnicaAberta({});
+    setNotasAbertas(false);
     setTroca(null);
     setSessaoAndamento(false);
     setIndoExecucao(false);
+    setEhConsulta(false);
+    setPodeIniciarConsulta(false);
+    codigoConsultaRef.current = '';
     setCarregando(true);
 
     if (!ID_TREINO.test(id || '')) {
-      setErro('Treino não encontrado.');
+      const consulta = lerConsulta(location.state);
+      if (consulta) {
+        setTreino(treinoDaConsulta(consulta));
+        setEhConsulta(true);
+        setPodeIniciarConsulta(consulta.liberada);
+        codigoConsultaRef.current = consulta.codigo;
+        carregarProgresso(consulta.exercicios, null);
+      } else {
+        setErro('Esta ficha não está disponível neste endereço.');
+      }
       setCarregando(false);
       return undefined;
     }
@@ -227,7 +270,7 @@ const TreinoGeradoPage = () => {
     return () => {
       ativo = false;
     };
-  }, [id, carregarProgresso]);
+  }, [id, location.state, carregarProgresso]);
 
   const mostrarConfirm = useCallback((titulo, mensagem, onConfirm, tipo = 'confirmar', rotuloConfirmar = 'Confirmar', linhaUnica = false) => {
     setModalConfig({
@@ -253,11 +296,13 @@ const TreinoGeradoPage = () => {
     setModalAberto(true);
   }, []);
 
-  const podeSalvar = Boolean(treino && !treino.realizado && execucaoPronta && !erroExecucao);
+  const bloqueado = treino?.execucaoPermitida === false;
+  const podeExcluir = treino?.exclusaoPermitida !== false;
+  const podeSalvar = Boolean(treino && !treino.realizado && !bloqueado && execucaoPronta && !erroExecucao);
 
   const salvarAgora = useCallback(() => {
     const atual = treinoRef.current;
-    if (!atual || atual.realizado) return Promise.resolve(true);
+    if (!atual || atual.realizado || atual.execucaoPermitida === false) return Promise.resolve(true);
     const { exercicios, invalido } = montarPayload(registrosRef.current);
     if (invalido) {
       setSalvamento('invalido');
@@ -280,20 +325,36 @@ const TreinoGeradoPage = () => {
   }, []);
 
   const voltarAosTreinos = () => {
-    navigate('/treino');
+    navigate(destinoVolta(location.state), { replace: true });
   };
 
-  const iniciarTreino = useCallback(async () => {
-    if (!treino || indoExecucao) return;
+  const abrirExecucao = useCallback(() => {
+    if (!treino || indoExecucao || treino.realizado || treino.execucaoPermitida === false) return;
+    setIndoExecucao(true);
+    navigate(`/treino/${treino._id}/executar`, { state: estadoOrigem(location.state?.origem) });
+  }, [treino, indoExecucao, location.state, navigate]);
+
+  const iniciarConsulta = async () => {
+    const codigo = codigoConsultaRef.current;
+    if (!podeIniciarConsulta || !/^[A-F]$/.test(codigo) || indoExecucao) return;
     setIndoExecucao(true);
     try {
-      await api.controlWorkoutExecution(treino._id, { acao: 'iniciar' });
-      navigate(`/treino/${treino._id}/executar`);
-    } catch {
+      const resposta = await api.iniciarSessaoRotina(codigo);
+      const novoId = idRetornado(resposta);
+      if (!novoId) {
+        setIndoExecucao(false);
+        mostrarAlerta('Treino indisponível', 'Não foi possível abrir a ficha agora.');
+        return;
+      }
+      navigate(`/treino/${novoId}`, { replace: true, state: estadoOrigem(location.state?.origem) });
+    } catch (error) {
       setIndoExecucao(false);
-      mostrarAlerta('Erro', 'Não foi possível iniciar o treino. Tente novamente.');
+      mostrarAlerta(
+        'Treino bloqueado',
+        error?.message || 'Não foi possível iniciar este treino.',
+      );
     }
-  }, [treino, indoExecucao, navigate, mostrarAlerta]);
+  };
 
   const totalConcluidas = useMemo(
     () => Object.values(registros).reduce((soma, linhas) => soma + contarConcluidas(linhas), 0),
@@ -319,8 +380,11 @@ const TreinoGeradoPage = () => {
             'Treino marcado como realizado! Você pode ver seu progresso no Dashboard.',
           );
         }
-      } catch {
-        mostrarAlerta('Erro', 'Erro ao marcar treino como realizado. Tente novamente.');
+      } catch (error) {
+        mostrarAlerta(
+          'Treino bloqueado',
+          error?.message || 'Erro ao marcar treino como realizado. Tente novamente.',
+        );
       }
     };
 
@@ -353,14 +417,17 @@ const TreinoGeradoPage = () => {
               tipo: 'alert',
               titulo: 'Sucesso',
               mensagem: 'Treino deletado com sucesso!',
-              onConfirm: () => navigate('/treino'),
+              onConfirm: () => navigate(destinoVolta(location.state), { replace: true }),
               onCancel: null,
             });
             setModalAberto(true);
           }
-        } catch {
+        } catch (error) {
           setModalAberto(false);
-          mostrarAlerta('Erro', 'Erro ao deletar treino. Tente novamente.');
+          mostrarAlerta(
+            'Treino preservado',
+            error?.message || 'Erro ao deletar treino. Tente novamente.',
+          );
         }
       },
       'destrutivo',
@@ -434,7 +501,7 @@ const TreinoGeradoPage = () => {
     }
   };
 
-  const treinoCorresponde = treino && String(treino._id) === id;
+  const treinoCorresponde = Boolean(treino) && (ehConsulta || String(treino._id) === id);
 
   if (carregando || (!erro && !treinoCorresponde)) {
     return <LoadingSpinner />;
@@ -443,18 +510,16 @@ const TreinoGeradoPage = () => {
   const totalSeries = treino
     ? treino.exercicios.reduce((soma, e) => soma + (Number(e.series) || 0), 0)
     : 0;
-  const divisao = treino ? rotuloDivisao(treino) : null;
-  const rotuloSessao = treino
-    ? treino.letraTreino
-      ? `Treino ${treino.letraTreino}`
-      : treino.variante
-        ? `Sessão ${treino.variante}`
-        : null
-    : null;
+  const gruposAnalise = seriesPorGrupo(treino);
   const editavel = podeSalvar;
+  const blocos = treino ? agruparEmBlocos(treino.exercicios) : [];
+  const observacoes = Array.isArray(treino?.observacoes)
+    ? treino.observacoes.map((texto) => observacaoVisivel(texto)).filter(Boolean)
+    : [];
+  const rotuloPrincipal = sessaoAndamento ? 'Retomar treino' : 'Iniciar treino';
 
   return (
-    <Container className="custom-scroll">
+    <Pagina className="custom-scroll">
       <DialogoAcao
         aberto={modalAberto}
         titulo={modalConfig.titulo}
@@ -521,140 +586,98 @@ const TreinoGeradoPage = () => {
         )}
       </DialogoAcao>
 
-      <Header>
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <Logo>HealGym</Logo>
-        </motion.div>
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-        >
-          <BackButton
-            onClick={voltarAosTreinos}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <FiArrowLeft />
-            Treinos
-          </BackButton>
-        </motion.div>
-      </Header>
+      <Topo>
+        <BotaoRetorno type="button" onClick={voltarAosTreinos}>
+          <FiArrowLeft aria-hidden="true" />
+          {rotuloDeOrigem(location.state)}
+        </BotaoRetorno>
+        <Marca>HealGym</Marca>
+        <span aria-hidden="true" />
+      </Topo>
 
-      <MainContent>
+      <Conteudo>
         {erro || !treino ? (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <TreinoDisplay>
-              <TreinoHeader>
-                <TreinoTitulo>Treino indisponível</TreinoTitulo>
-                <TreinoObjetivo>{erro || 'Não foi possível carregar este treino.'}</TreinoObjetivo>
-              </TreinoHeader>
-            </TreinoDisplay>
-          </motion.div>
+          <Surge>
+            <TituloPagina>Treino indisponível</TituloPagina>
+            <Nota>{erro || 'Não foi possível carregar este treino.'}</Nota>
+          </Surge>
         ) : (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            style={{ width: '100%' }}
-          >
-            <TreinoDisplay>
-              <TreinoHeader>
-                <TreinoTitulo>{treino.titulo}</TreinoTitulo>
-                <FichaMeta>
-                  {(divisao || rotuloSessao) && (
-                    <MetaTag>
-                      <FiLayers />
-                      {[divisao, rotuloSessao].filter(Boolean).join(' · ')}
-                    </MetaTag>
-                  )}
-                  <MetaTag>
-                    <FiTarget />
-                    {treino.tempoDisponivel} min selecionados
-                  </MetaTag>
-                  {treino.duracaoEstimadaMinutos && (
-                    <MetaTag>
-                      <FiClock />
-                      {treino.duracaoEstimadaMinutos} min estimados
-                    </MetaTag>
-                  )}
-                  {treino.realizado && Number(treino.duracaoRealSegundos) > 0 && (
-                    <MetaTag>
-                      <FiClock />
-                      {Math.max(1, Math.round(Number(treino.duracaoRealSegundos) / 60))} min reais
-                    </MetaTag>
-                  )}
-                  <MetaTag>
-                    <FiActivity />
-                    {treino.exercicios.length} exercícios · {totalSeries} séries
-                  </MetaTag>
-                </FichaMeta>
-                <TreinoObjetivo>{treino.objetivo}</TreinoObjetivo>
-                {Array.isArray(treino.observacoes) && treino.observacoes.length > 0 && (
-                  <Observacoes>
-                    {treino.observacoes.map((texto) => (
-                      <li key={texto}>{texto}</li>
-                    ))}
-                  </Observacoes>
-                )}
+          <>
+            {typeof location.state?.avisoRecuperacao === 'string' &&
+              location.state.avisoRecuperacao && (
+                <Aviso $tipo="atencao">
+                  <FiAlertCircle aria-hidden="true" />
+                  <p>{location.state.avisoRecuperacao}</p>
+                </Aviso>
+              )}
 
-                {!treino.realizado && (
-                  <TimerSection>
-                    <IniciarTreinoButton
-                      onClick={iniciarTreino}
-                      disabled={indoExecucao}
-                      whileHover={indoExecucao ? {} : { scale: 1.02 }}
-                      whileTap={indoExecucao ? {} : { scale: 0.98 }}
+            <Surge ordem={0}>
+              <CabecalhoFicha>
+                <TituloPagina>{treino.titulo}</TituloPagina>
+                <ResumoFicha>{resumoDaFicha(treino, totalSeries)}</ResumoFicha>
+                {treino.realizado && treino.dataRealizacao && (
+                  <ResumoFicha>
+                    Concluído em {new Date(treino.dataRealizacao).toLocaleDateString('pt-BR')}
+                  </ResumoFicha>
+                )}
+                {!treino.realizado && bloqueado && !podeIniciarConsulta && (
+                  <Nota>{treino.bloqueioMensagem || 'Conclua o treino anterior para liberar este.'}</Nota>
+                )}
+                {podeIniciarConsulta && (
+                  <AcaoCentral>
+                    <BotaoPrimario type="button" onClick={iniciarConsulta} disabled={indoExecucao}>
+                      <FiPlay aria-hidden="true" />
+                      {indoExecucao ? 'Abrindo…' : 'Iniciar treino'}
+                    </BotaoPrimario>
+                  </AcaoCentral>
+                )}
+                {!bloqueado && !treino.realizado && (
+                  <AcaoCentral>
+                    <BotaoPrimario type="button" onClick={abrirExecucao} disabled={indoExecucao}>
+                      <FiPlay aria-hidden="true" />
+                      {indoExecucao ? 'Abrindo…' : rotuloPrincipal}
+                    </BotaoPrimario>
+                  </AcaoCentral>
+                )}
+              </CabecalhoFicha>
+            </Surge>
+
+            {observacoes.length > 0 && (
+              <BlocoExtra>
+                <BotaoTexto
+                  type="button"
+                  aria-expanded={notasAbertas}
+                  onClick={() => setNotasAbertas((aberta) => !aberta)}
+                >
+                  {notasAbertas ? <FiChevronUp aria-hidden="true" /> : <FiChevronDown aria-hidden="true" />}
+                  Observações
+                </BotaoTexto>
+                <AnimatePresence initial={false}>
+                  {notasAbertas && (
+                    <PainelExtra
+                      initial={reduzir ? false : { height: 0 }}
+                      animate={{ height: 'auto' }}
+                      exit={{ height: 0, transition: passo(reduzir) }}
+                      transition={passo(reduzir)}
+                      style={{ overflow: 'hidden' }}
                     >
-                      <FiPlay />
-                      {indoExecucao ? 'Abrindo…' : sessaoAndamento ? 'Retomar Treino' : 'Iniciar Treino'}
-                    </IniciarTreinoButton>
-                  </TimerSection>
-                )}
-
-                <ActionButtons>
-                  {!treino.realizado && (
-                    <BotaoDiscretoFicha type="button" onClick={handleMarcarRealizado}>
-                      <FiCheck />
-                      Marcar como realizado
-                    </BotaoDiscretoFicha>
+                      <ListaNotas>
+                        {observacoes.map((texto) => (
+                          <li key={texto}>{simplificarTexto(texto) || texto}</li>
+                        ))}
+                      </ListaNotas>
+                    </PainelExtra>
                   )}
-                  <BotaoPerigo type="button" onClick={handleDeletarTreino}>
-                    <FiTrash2 />
-                    Excluir treino
-                  </BotaoPerigo>
-                </ActionButtons>
+                </AnimatePresence>
+              </BlocoExtra>
+            )}
 
-                {!treino.realizado && (erroExecucao || salvamento) && (
-                  <SalvamentoStatus erro={erroExecucao || salvamento === 'erro' || salvamento === 'invalido'}>
-                    {erroExecucao
-                      ? 'Não foi possível carregar os registros de séries. Recarregue a página para registrar cargas.'
-                      : TEXTO_SALVAMENTO[salvamento]}
-                  </SalvamentoStatus>
-                )}
-
-                {treino.realizado && (
-                  <RealizadoBadge>
-                    <FiCheck />
-                    Treino Realizado em{' '}
-                    {new Date(treino.dataRealizacao).toLocaleDateString('pt-BR')}
-                  </RealizadoBadge>
-                )}
-              </TreinoHeader>
-
-              <ExerciciosList>
-                {agruparEmBlocos(treino.exercicios).map((bloco, blocoIndex) => (
+            <ListaExercicios>
+                {blocos.map((bloco, blocoIndex) => (
                   <ExerciciosBloco
                     key={`${bloco.nome}-${blocoIndex}`}
                     bloco={bloco}
+                    mostrarTitulo={blocos.length > 1}
                     renderizar={({ exercicio, index }) => {
                       const uid = uidDoExercicio(exercicio, index);
                       const linhas = registros[uid] || [];
@@ -676,267 +699,391 @@ const TreinoGeradoPage = () => {
                           })),
                       );
                       const antes = anterior ? resumoSessao(anterior.series) : null;
-                      const carga = rotuloCarga(exercicio);
+
+                      const reserva = orientacaoDeCarga(exercicio.repeticoes, exercicio.rirAlvo);
+                      const aquecimento = textoAquecimento(exercicio, index);
+                      const marcas =
+                        historico && (historico.melhorCarga != null || historico.maisRepeticoes != null);
 
                       return (
-                        <ExercicioCard key={uid} completo={serieCompleta}>
-                          <ExercicioNumero completo={serieCompleta}>
-                            {serieCompleta ? <FiCheckCircle /> : index + 1}
-                          </ExercicioNumero>
-                          <ExercicioInfo>
-                            <ExercicioHeader>
-                              <div>
-                                <ExercicioNome>{exercicio.nome}</ExercicioNome>
-                                <PorcaoMuscular>{porcaoLegivel(exercicio)}</PorcaoMuscular>
-                              </div>
-                            </ExercicioHeader>
-
-                            {exercicio.videoUrl && (
-                            <ExercicioDemo>
-                              <DemoVideo
-                                controls
-                                preload="none"
-                                playsInline
-                                poster={exercicio.videoThumbnailUrl || undefined}
-                                src={exercicio.videoUrl}
-                                aria-label={`Demonstração de ${exercicio.nome}`}
-                              />
-                            </ExercicioDemo>
+                        <CartaoExercicio
+                          key={uid}
+                          $feito={serieCompleta}
+                          initial={reduzir ? false : { opacity: 0, y: 12 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{
+                            duration: reduzir ? 0 : 0.35,
+                            delay: reduzir ? 0 : Math.min(index, 8) * 0.04,
+                            ease: CURVA,
+                          }}
+                        >
+                          <Numero $feito={serieCompleta}>{index + 1}</Numero>
+                          <CorpoExercicio>
+                            <NomeExercicio>{exercicio.nome}</NomeExercicio>
+                            <Prescricao>{linhaDaPrescricao(exercicio)}</Prescricao>
+                            {reserva && <Reserva>{reserva}</Reserva>}
+                            {aquecimento && (
+                              <Detalhe>
+                                <RotuloDestaque>Aquecimento:</RotuloDestaque>{' '}
+                                {aquecimento.replace(/^Aquecimento:\s*/, '')}
+                              </Detalhe>
                             )}
-
-                            <PrescricaoLinha>
-                              <span>
-                                <strong>Séries:</strong> {exercicio.series}
-                              </span>
-                              <span>
-                                <strong>Repetições:</strong> {exercicio.repeticoes}
-                              </span>
-                              <span>
-                                <strong>Descanso:</strong> {exercicio.descanso}
-                              </span>
-                              {exercicio.rirAlvo && (
-                                <span title="Repetições que ainda caberiam ao final da série">
-                                  <strong>RIR alvo:</strong> {exercicio.rirAlvo}
-                                </span>
-                              )}
-                              {Number(exercicio.seriesAproximacao) > 0 && (
-                                <span>
-                                  <strong>Aproximação:</strong> {exercicio.seriesAproximacao}{' '}
-                                  {Number(exercicio.seriesAproximacao) === 1 ? 'série leve' : 'séries leves'}
-                                </span>
-                              )}
-                            </PrescricaoLinha>
-
-                            {carga && <HistoricoLinha>{carga}</HistoricoLinha>}
-
                             {anterior && (
-                              <HistoricoLinha>
-                                <strong>Última vez{anterior.data ? ` (${formatarData(anterior.data)})` : ''}:</strong>
+                              <Detalhe>
+                                <RotuloDestaque>Última vez:</RotuloDestaque>{' '}
+                                {anterior.data ? `${formatarData(anterior.data)} · ` : ''}
                                 {descreverSeries(anterior.series)}
-                              </HistoricoLinha>
-                            )}
-                            {historico && (historico.melhorCarga != null || historico.maisRepeticoes != null) && (
-                              <HistoricoLinha>
-                                {historico.melhorCarga != null && (
-                                  <>
-                                    <strong>Melhor carga:</strong>
-                                    {formatarCarga(historico.melhorCarga)} kg
-                                    {historico.repeticoesNaMelhorCarga != null
-                                      ? ` × ${historico.repeticoesNaMelhorCarga}`
-                                      : ''}
-                                    {'   '}
-                                  </>
-                                )}
-                                {historico.maisRepeticoes != null && (
-                                  <>
-                                    <strong>Mais repetições:</strong>
-                                    {historico.maisRepeticoes}
-                                    {historico.cargaNasMaisRepeticoes != null
-                                      ? ` (${formatarCarga(historico.cargaNasMaisRepeticoes)} kg)`
-                                      : ''}
-                                  </>
-                                )}
-                              </HistoricoLinha>
+                              </Detalhe>
                             )}
                             {historico?.sugestao && editavel && (
-                              <SugestaoTexto>{historico.sugestao}</SugestaoTexto>
+                              <Reserva>{simplificarTexto(historico.sugestao)}</Reserva>
                             )}
-
-                            {treino.realizado && registrosFeitos.length > 0 &&
+                            {treino.realizado &&
                               registrosFeitos.map((linha) => (
-                                <HistoricoLinha key={linha.numero}>
-                                  <strong>Série {linha.numero}:</strong>
+                                <Detalhe key={linha.numero}>
+                                  <RotuloDestaque>Série {linha.numero}:</RotuloDestaque>{' '}
                                   {linha.carga ? `${linha.carga} kg` : 'sem carga'}
                                   {linha.repeticoes ? ` × ${linha.repeticoes}` : ''}
-                                  {linha.rir != null && linha.rir !== '' ? ` · RIR ${linha.rir}` : ''}
-                                </HistoricoLinha>
+                                  {linha.rir != null && linha.rir !== ''
+                                    ? ` · ${textoReserva(linha.rir, true)}`
+                                    : ''}
+                                </Detalhe>
                               ))}
-
                             {treino.realizado && hoje && antes && (
-                              <ComparacaoLinha>
-                                Hoje: {hoje.series} {hoje.series === 1 ? 'série' : 'séries'}
-                                {hoje.maiorCarga != null ? ` · maior carga ${formatarCarga(hoje.maiorCarga)} kg` : ''}
+                              <Detalhe>
+                                <RotuloDestaque>Hoje:</RotuloDestaque> {hoje.series}{' '}
+                                {hoje.series === 1 ? 'série' : 'séries'}
+                                {hoje.maiorCarga != null ? ` · ${formatarCarga(hoje.maiorCarga)} kg` : ''}
                                 {hoje.totalRepeticoes != null ? ` · ${hoje.totalRepeticoes} repetições` : ''}
-                                {'  |  '}Anterior: {antes.series} {antes.series === 1 ? 'série' : 'séries'}
-                                {antes.maiorCarga != null ? ` · maior carga ${formatarCarga(antes.maiorCarga)} kg` : ''}
-                                {antes.totalRepeticoes != null ? ` · ${antes.totalRepeticoes} repetições` : ''}
-                              </ComparacaoLinha>
+                                {' · '}
+                                <RotuloDestaque>Anterior:</RotuloDestaque> {antes.series}{' '}
+                                {antes.series === 1 ? 'série' : 'séries'}
+                                {antes.maiorCarga != null ? ` · ${formatarCarga(antes.maiorCarga)} kg` : ''}
+                              </Detalhe>
                             )}
 
-                            {treino.realizado && concluidas > 0 && (
-                              <SeriesProgress>
-                                <SeriesProgressInfo>
-                                  <SeriesProgressLabel>
-                                    Séries: {concluidas} / {total}
-                                  </SeriesProgressLabel>
-                                  <SeriesProgressPercentual>
-                                    {Math.min(100, Math.round((concluidas / total) * 100))}%
-                                  </SeriesProgressPercentual>
-                                </SeriesProgressInfo>
-                                <SeriesProgressBar>
-                                  <SeriesProgressFill
-                                    progresso={Math.min(100, (concluidas / total) * 100)}
-                                    as={motion.div}
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${Math.min(100, (concluidas / total) * 100)}%` }}
-                                    transition={{ duration: 0.5, ease: 'easeOut' }}
-                                  />
-                                </SeriesProgressBar>
-                              </SeriesProgress>
-                            )}
-
-                            <FichaBotoes>
-                              <BotaoDiscreto
+                            <AcoesDoExercicio>
+                              <BotaoTexto
                                 type="button"
                                 aria-expanded={aberta}
                                 onClick={() =>
                                   setTecnicaAberta((atual) => ({ ...atual, [uid]: !atual[uid] }))
                                 }
                               >
-                                {aberta ? <FiChevronUp /> : <FiChevronDown />}
-                                Técnica e cuidados
-                              </BotaoDiscreto>
+                                {aberta ? <FiChevronUp aria-hidden="true" /> : <FiChevronDown aria-hidden="true" />}
+                                Cuidados
+                              </BotaoTexto>
                               {editavel && (
-                                <BotaoDiscreto type="button" onClick={() => abrirTroca(exercicio, index)}>
-                                  <FiRepeat />
-                                  Trocar exercício
-                                </BotaoDiscreto>
+                                <BotaoTexto type="button" onClick={() => abrirTroca(exercicio, index)}>
+                                  <FiRepeat aria-hidden="true" />
+                                  Trocar
+                                </BotaoTexto>
                               )}
-                            </FichaBotoes>
+                            </AcoesDoExercicio>
 
                             <AnimatePresence initial={false}>
                               {aberta && (
-                                <TecnicaPainel
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: 'auto', opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  transition={{ duration: 0.25 }}
+                                <PainelExtra
+                                  initial={reduzir ? false : { height: 0 }}
+                                  animate={{ height: 'auto' }}
+                                  exit={{ height: 0, transition: passo(reduzir) }}
+                                  transition={passo(reduzir)}
+                                  style={{ overflow: 'hidden' }}
                                 >
-                                  <Tecnica>
-                                    <strong>Técnica:</strong> {exercicio.tecnica}
-                                  </Tecnica>
-                                  {exercicio.musculoPrincipal && (
-                                    <Tecnica>
-                                      <strong>Principal:</strong> {exercicio.musculoPrincipal}
-                                      {exercicio.enfase ? ` · ${exercicio.enfase}` : ''}
-                                    </Tecnica>
-                                  )}
-                                  {exercicio.musculosSecundarios && (
-                                    <Tecnica>
-                                      <strong>Também:</strong> {exercicio.musculosSecundarios}
-                                    </Tecnica>
-                                  )}
-                                  {exercicio.cuidado && (
-                                    <Tecnica>
-                                      <strong>Cuidado:</strong> {exercicio.cuidado}
-                                    </Tecnica>
-                                  )}
-                                  {exercicio.erroComum && (
-                                    <Tecnica>
-                                      <strong>Erro comum:</strong> {exercicio.erroComum}
-                                    </Tecnica>
-                                  )}
-                                  <Equipamentos>
-                                    <strong>Equipamento:</strong> {rotuloEquipamento(exercicio)}
-                                  </Equipamentos>
-                                </TecnicaPainel>
+                                  <MioloExtra>
+                                    {exercicio.videoUrl && (
+                                      <Video
+                                        controls
+                                        preload="none"
+                                        playsInline
+                                        poster={exercicio.videoThumbnailUrl || undefined}
+                                        src={exercicio.videoUrl}
+                                        aria-label={`Demonstração de ${exercicio.nome}`}
+                                      />
+                                    )}
+                                    <DetalhesExercicio exercicio={exercicio} />
+                                    {marcas && (
+                                      <Detalhe>
+                                        {historico.melhorCarga != null && (
+                                          <>
+                                            <RotuloDestaque>Melhor carga:</RotuloDestaque>{' '}
+                                            {formatarCarga(historico.melhorCarga)} kg
+                                            {historico.repeticoesNaMelhorCarga != null
+                                              ? ` × ${historico.repeticoesNaMelhorCarga}`
+                                              : ''}
+                                          </>
+                                        )}
+                                        {historico.maisRepeticoes != null && (
+                                          <>
+                                            {historico.melhorCarga != null ? ' · ' : ''}
+                                            <RotuloDestaque>Mais repetições:</RotuloDestaque>{' '}
+                                            {historico.maisRepeticoes}
+                                            {historico.cargaNasMaisRepeticoes != null
+                                              ? ` (${formatarCarga(historico.cargaNasMaisRepeticoes)} kg)`
+                                              : ''}
+                                          </>
+                                        )}
+                                      </Detalhe>
+                                    )}
+                                  </MioloExtra>
+                                </PainelExtra>
                               )}
                             </AnimatePresence>
-                          </ExercicioInfo>
-                        </ExercicioCard>
+                          </CorpoExercicio>
+                        </CartaoExercicio>
                       );
                     }}
                   />
                 ))}
-              </ExerciciosList>
+            </ListaExercicios>
 
+            {(!treino.realizado && !bloqueado) || podeExcluir ? (
+              <AcoesQuietas>
+                {!treino.realizado && !bloqueado && (
+                  <BotaoTexto type="button" onClick={handleMarcarRealizado}>
+                    <FiCheck aria-hidden="true" />
+                    Marcar como realizado
+                  </BotaoTexto>
+                )}
+                {podeExcluir && (
+                  <AcaoPerigo type="button" onClick={handleDeletarTreino}>
+                    <FiTrash2 aria-hidden="true" />
+                    Excluir treino
+                  </AcaoPerigo>
+                )}
+              </AcoesQuietas>
+            ) : null}
+
+            {!treino.realizado && (erroExecucao || salvamento) && (
+              <SalvamentoStatus $erro={erroExecucao || salvamento === 'erro' || salvamento === 'invalido'}>
+                {erroExecucao
+                  ? 'Não foi possível carregar os registros de séries. Recarregue a página para registrar cargas.'
+                  : TEXTO_SALVAMENTO[salvamento]}
+              </SalvamentoStatus>
+            )}
+
+            {gruposAnalise.length > 0 && (
               <Analise>
                 <BotaoAnalise
                   type="button"
                   aria-expanded={analiseAberta}
+                  aria-controls="analise-do-treino"
                   onClick={() => setAnaliseAberta((aberta) => !aberta)}
                 >
-                  {analiseAberta ? <FiChevronUp /> : <FiChevronDown />}
+                  {analiseAberta ? <FiChevronUp aria-hidden="true" /> : <FiChevronDown aria-hidden="true" />}
                   Análise do treino
                 </BotaoAnalise>
-                {analiseAberta &&
-                  (treino.cobertura ? (
-                    <CoberturaTreino treino={treino} />
-                  ) : (
-                    <ResumoSection>
-                      <ResumoTitulo>Resumo de cobertura muscular</ResumoTitulo>
-                      <ResumoTexto>{treino.resumo}</ResumoTexto>
-                    </ResumoSection>
-                  ))}
+                <AnimatePresence initial={false}>
+                  {analiseAberta && (
+                    <PainelExtra
+                      id="analise-do-treino"
+                      initial={reduzir ? false : { height: 0 }}
+                      animate={{ height: 'auto' }}
+                      exit={{ height: 0, transition: passo(reduzir) }}
+                      transition={passo(reduzir)}
+                      style={{ overflow: 'hidden' }}
+                    >
+                      <MioloExtra>
+                        <CoberturaTreino grupos={gruposAnalise} />
+                      </MioloExtra>
+                    </PainelExtra>
+                  )}
+                </AnimatePresence>
               </Analise>
-            </TreinoDisplay>
-          </motion.div>
+            )}
+          </>
         )}
-      </MainContent>
-    </Container>
+      </Conteudo>
+    </Pagina>
   );
 };
 
-const ExerciciosBloco = ({ bloco, renderizar }) => (
+const ExerciciosBloco = ({ bloco, mostrarTitulo, renderizar }) => (
   <>
-    <BlocoTitulo>{bloco.nome}</BlocoTitulo>
+    {mostrarTitulo && <TituloBloco>{bloco.nome}</TituloBloco>}
     {bloco.itens.map((item) => renderizar(item))}
   </>
 );
 
-const BotaoDiscretoFicha = styled.button`
-  display: inline-flex;
+const CabecalhoFicha = styled.header`
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.4rem;
-  min-height: 40px;
-  padding: 0.45rem 0.8rem;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: transparent;
+  gap: 0.7rem;
+  text-align: center;
+`;
+
+const ResumoFicha = styled.p`
+  margin: 0;
   color: var(--text-secondary);
+  font-family: 'Marcellus', serif;
+  font-size: 0.98rem;
+  line-height: 1.45;
+`;
+
+const AcaoCentral = styled(Acoes)`
+  justify-content: center;
+  width: 100%;
+`;
+
+const AcoesQuietas = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 1rem;
+`;
+
+const AcaoPerigo = styled(BotaoTexto)`
+  color: #e8b4b4;
+  text-decoration-color: rgba(232, 180, 180, 0.4);
+`;
+
+const BlocoExtra = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+`;
+
+const ListaNotas = styled.ul`
+  margin: 0;
+  padding: 0.15rem 0 0.35rem 1.1rem;
+  color: var(--text-secondary);
+  font-family: 'Marcellus', serif;
+  font-size: 0.92rem;
+  line-height: 1.45;
+`;
+
+const ListaExercicios = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+`;
+
+const TituloBloco = styled.h2`
+  margin: 0.35rem 0 0;
+  color: var(--accent);
   font-family: 'Cinzel', serif;
   font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  text-transform: none;
-  cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+`;
 
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+const CartaoExercicio = styled(motion.article)`
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  min-width: 0;
+  background: var(--card-bg);
+  border: 1px solid
+    ${({ $feito }) => ($feito ? 'rgba(198, 169, 100, 0.28)' : 'rgba(198, 169, 100, 0.12)')};
+  border-radius: 12px;
+  padding: 0.8rem 0.85rem;
+  transition: border-color 0.2s ease;
+
+  &:hover {
+    border-color: rgba(198, 169, 100, 0.4);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
   }
 `;
 
-const BotaoPerigo = styled(BotaoDiscretoFicha)`
-  color: #e8b4b4;
-  border-color: rgba(141, 58, 58, 0.75);
+const Numero = styled.span`
+  flex-shrink: 0;
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(198, 169, 100, 0.45);
+  color: ${({ $feito }) => ($feito ? 'var(--white)' : 'var(--accent)')};
+  background: ${({ $feito }) => ($feito ? 'rgba(198, 169, 100, 0.18)' : 'transparent')};
+  font-family: 'Cinzel', serif;
+  font-size: 0.78rem;
+`;
+
+const CorpoExercicio = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+`;
+
+const NomeExercicio = styled.h3`
+  margin: 0;
+  color: var(--accent);
+  font-family: 'Cinzel', serif;
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.3;
+  text-transform: none;
+`;
+
+const Prescricao = styled.p`
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: 'Marcellus', serif;
+  font-size: 0.92rem;
+  line-height: 1.4;
+`;
+
+const Reserva = styled.p`
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: 'Marcellus', serif;
+  font-size: 0.9rem;
+  line-height: 1.4;
+`;
+
+const Detalhe = styled.p`
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: 'Marcellus', serif;
+  font-size: 0.88rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+`;
+
+const AcoesDoExercicio = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.85rem;
+  margin-top: 0.15rem;
+`;
+
+const PainelExtra = styled(motion.div)`
+  overflow: hidden;
+  min-width: 0;
+`;
+
+const MioloExtra = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.35rem;
+`;
+
+const Video = styled.video`
+  display: block;
+  width: min(100%, 220px);
+  max-height: 124px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(198, 169, 100, 0.35);
+  background: #0a0a0a;
 `;
 
 const Analise = styled.section`
-  margin-top: 1.25rem;
-  background: #1a1a1a;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
-  padding: 0.85rem 1rem 1rem;
+  border: 1px solid rgba(198, 169, 100, 0.12);
+  border-radius: 12px;
+  padding: 0.45rem 0.9rem;
+  background: var(--card-bg);
 `;
 
 const BotaoAnalise = styled.button`
@@ -945,7 +1092,7 @@ const BotaoAnalise = styled.button`
   gap: 0.45rem;
   width: 100%;
   background: transparent;
-  color: var(--white);
+  color: var(--accent);
   font-family: 'Cinzel', serif;
   font-size: 1rem;
   letter-spacing: 0.03em;
@@ -955,6 +1102,12 @@ const BotaoAnalise = styled.button`
 
   svg {
     color: var(--accent);
+  }
+
+  transition: opacity 0.2s ease;
+
+  &:hover {
+    opacity: 0.82;
   }
 
   &:focus-visible {

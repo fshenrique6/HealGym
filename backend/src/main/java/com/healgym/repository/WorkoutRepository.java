@@ -33,6 +33,12 @@ public class WorkoutRepository extends OwnedRepository {
     return encontrados;
   }
 
+  public Document findByChaveIdempotencia(ObjectId userId, String chave) {
+    return documents()
+        .find(Filters.and(Filters.eq("user", userId), Filters.eq("chaveIdempotencia", chave)))
+        .first();
+  }
+
   public List<Document> findByPrograma(ObjectId userId, String chave) {
     List<Document> encontrados = new ArrayList<>();
     Bson filtro = Filters.and(Filters.eq("user", userId), Filters.eq("programaChave", chave));

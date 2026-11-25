@@ -57,8 +57,8 @@ class PrescricaoTreinoTest {
     assertEquals(90, base.get("descansoSegundos"));
     assertEquals("2-3", base.get("rirAlvo"));
 
-    assertEquals("6-10", força.get("repeticoes"));
-    assertEquals(120, força.get("descansoSegundos"));
+    assertEquals("6-8", força.get("repeticoes"));
+    assertEquals(150, força.get("descansoSegundos"));
     assertEquals("2-3", força.get("rirAlvo"));
     assertNotEquals("4-6", força.get("repeticoes"));
 
@@ -77,9 +77,8 @@ class PrescricaoTreinoTest {
 
     assertEquals(1, PrescricaoPerfil.interpretar(parado).rank);
     assertEquals(1, PrescricaoPerfil.interpretar(irregular).rank);
-    assertEquals(2, PrescricaoPerfil.interpretar(consistente).rank);
-    assertEquals(2, PrescricaoPerfil.interpretar(muitoFrequente).rank);
-    assertNotEquals(3, PrescricaoPerfil.interpretar(consistente).rank);
+    assertEquals(3, PrescricaoPerfil.interpretar(consistente).rank);
+    assertEquals(3, PrescricaoPerfil.interpretar(muitoFrequente).rank);
 
     assertEquals("8-12", principal(gerar(parado)).get("repeticoes"));
     assertEquals("6-10", principal(gerar(consistente)).get("repeticoes"));
@@ -94,10 +93,10 @@ class PrescricaoTreinoTest {
     User.Profile regular = perfil("forca", "mais_de_5_anos", "semanal_5_mais");
 
     assertEquals(1, PrescricaoPerfil.interpretar(parado).rank);
-    assertEquals(2, PrescricaoPerfil.interpretar(regular).rank);
-    assertEquals("6-10", principal(gerar(parado)).get("repeticoes"));
+    assertEquals(3, PrescricaoPerfil.interpretar(regular).rank);
+    assertEquals("6-8", principal(gerar(parado)).get("repeticoes"));
     assertEquals("4-6", principal(gerar(regular)).get("repeticoes"));
-    assertEquals(150, principal(gerar(regular)).get("descansoSegundos"));
+    assertEquals(180, principal(gerar(regular)).get("descansoSegundos"));
     assertNotEquals(assinatura(gerar(parado)), assinatura(gerar(regular)));
   }
 

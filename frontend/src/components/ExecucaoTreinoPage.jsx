@@ -1,7 +1,8 @@
-import { AnimatePresence, motion } from 'framer-motion';
-import { useNavigate, useParams } from 'react-router-dom';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { estadoOrigem } from '../utils/navegacaoTreino';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FiArrowLeft, FiCheck, FiClock, FiPause, FiPlay, FiAlertCircle } from 'react-icons/fi';
+import { FiArrowLeft, FiCheck, FiChevronDown, FiClock, FiPause, FiPlay, FiAlertCircle } from 'react-icons/fi';
 import api from '../services/api';
 import LoadingSpinner from './LoadingSpinner';
 import DialogoAcao from './DialogoAcao';
@@ -17,18 +18,22 @@ import {
   montarPayload,
   porcaoLegivel,
   registrosDaExecucao,
-  rotuloCarga,
   rotuloDivisao,
   segundosDecorridos,
   uidDoExercicio,
 } from '../utils/treinoExecucao';
+import { execucaoConfirmaAquecimento, execucaoConfirmaPayload } from '../utils/confirmacaoExecucao';
+import { orientacaoDeCarga, seriesPreparatorias, textoAquecimento } from '../utils/orientacaoFicha';
+import { simplificarTexto } from '../utils/rotina';
+import DetalhesExercicio from './treino/DetalhesExercicio';
+import RotuloDestaque from './treino/RotuloDestaque';
+import { CURVA } from './treino/movimento';
 import {
   BackButton,
   Container,
   Header,
   Logo,
   MainContent,
-  Tecnica,
   TreinoDisplay,
   TreinoTitulo,
 } from './treinoEstilos';
@@ -60,6 +65,7 @@ import {
   ProgressoTexto,
   ProgressoTrilha,
   ProximoDiscreto,
+  TextoClaro,
   Referencia,
   Relogio,
   ResumoLinha,
@@ -71,18 +77,23 @@ const ID_TREINO = /^[a-fA-F0-9]{24}$/;
 const ENTRADA = { initial: { opacity: 0, y: 20 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.5 } };
 const HOVER_PRINCIPAL = { scale: 1.02 };
 const TOQUE_PRINCIPAL = { scale: 0.98 };
-const HOVER_BOTAO = { scale: 1.05 };
-const TOQUE_BOTAO = { scale: 0.95 };
+const HOVER_BOTAO = { scale: 1.02 };
+const TOQUE_BOTAO = { scale: 0.98 };
+const passo = (reduzir) => (reduzir ? { duration: 0 } : { duration: 0.22, ease: CURVA });
+
+function SetaPainel(props) {
+  return <motion.span {...props} style={{ display: 'inline-flex', flexShrink: 0 }} />;
+}
 const CIRCUNFERENCIA = 2 * Math.PI * 96;
-const SOM_DESCANSO =
-  'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+Dyvg==';
 
 const indiceDoUid = (exercicios, uid) =>
   exercicios.findIndex((exercicio, index) => uidDoExercicio(exercicio, index) === uid);
 
 const ExecucaoTreinoPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams();
+  const reduzir = useReducedMotion();
   const chave = `hg-exec-${id}`;
 
   const [treino, setTreino] = useState(null);
@@ -94,8 +105,7 @@ const ExecucaoTreinoPage = () => {
   const [transicao, setTransicao] = useState(null);
   const [carga, setCarga] = useState('');
   const [repeticoes, setRepeticoes] = useState('');
-  const [tecnicaAberta, setTecnicaAberta] = useState(false);
-  const [seriesAbertas, setSeriesAbertas] = useState(false);
+  const [painelPorExercicio, setPainelPorExercicio] = useState({});
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [erroAcao, setErroAcao] = useState('');
@@ -110,8 +120,9 @@ const ExecucaoTreinoPage = () => {
   const processandoRef = useRef(false);
   const vivoRef = useRef(false);
   const restanteAnterior = useRef(0);
-  const somLiberado = useRef(false);
-  const audioRef = useRef(null);
+  const seriesPainel = useRef(null);
+  const cuidadosPainel = useRef(null);
+  const seguirPainel = useRef(null);
 
   useEffect(() => {
     execRef.current = execucao;
@@ -166,6 +177,7 @@ const ExecucaoTreinoPage = () => {
     }
 
     const recarregou = sessionStorage.getItem(chave) === '1';
+    const espera = { id: null };
 
     api
       .getWorkout(id)
@@ -176,6 +188,10 @@ const ExecucaoTreinoPage = () => {
           return null;
         }
         const dados = resposta.data;
+        if (dados.execucaoPermitida === false) {
+          setErro(dados.bloqueioMensagem || 'Conclua o treino anterior para liberar este.');
+          return null;
+        }
         setTreino(dados);
         let sessao = null;
         try {
@@ -196,6 +212,19 @@ const ExecucaoTreinoPage = () => {
         if (!ativo) return null;
         sessionStorage.setItem(chave, '1');
         aplicarSessao(dados, sessao);
+        if (recarregou && ativo) {
+          espera.id = setTimeout(() => {
+            if (!vivoRef.current) return;
+            api
+              .controlWorkoutExecution(id, { acao: 'retomar' })
+              .then((controle) => {
+                if (vivoRef.current && controle?.data && !controle.data.finalizadoEm) {
+                  setExecucao(controle.data);
+                }
+              })
+              .catch(() => {});
+          }, 800);
+        }
         const ids = [
           ...new Set((dados.exercicios || []).map((item) => item.exercicioId).filter(Boolean)),
         ].slice(0, 20);
@@ -214,31 +243,17 @@ const ExecucaoTreinoPage = () => {
         const status = error?.response?.status;
         if (status === 404) setErro('Treino não encontrado.');
         else if (status === 401 || status === 403) setErro('Você não tem permissão para ver este treino.');
+        else if (status === 409) setErro(error.message || 'Conclua o treino anterior para liberar este.');
         else setErro('Não foi possível abrir a execução do treino.');
       })
       .finally(() => {
         if (ativo) setCarregando(false);
       });
 
-    let atraso = null;
-    if (recarregou) {
-      atraso = setTimeout(() => {
-        if (!vivoRef.current) return;
-        api
-          .controlWorkoutExecution(id, { acao: 'retomar' })
-          .then((controle) => {
-            if (vivoRef.current && controle?.data && !controle.data.finalizadoEm) {
-              setExecucao(controle.data);
-            }
-          })
-          .catch(() => {});
-      }, 800);
-    }
-
     return () => {
       ativo = false;
       vivoRef.current = false;
-      if (atraso) clearTimeout(atraso);
+      if (espera.id) clearTimeout(espera.id);
     };
   }, [id, chave, aplicarSessao]);
 
@@ -282,9 +297,25 @@ const ExecucaoTreinoPage = () => {
   const progressoPercentual = totalSeries ? Math.min(100, (seriesFeitas / totalSeries) * 100) : 0;
   const pulados = Array.isArray(execucao?.pulados) ? execucao.pulados : [];
   const pendentes = useMemo(() => contarPendentes(exercicios, registros), [exercicios, registros]);
+  const preparatorias = seriesPreparatorias(exercicio, indice);
+  const aquecimentoFeito = (execucao?.exercicios || []).find((item) => item?.uid === foco?.uid)?.aquecimento;
+  const aquecimentoPendente = Boolean(
+    foco?.uid &&
+      preparatorias > 0 &&
+      foco?.serie === 1 &&
+      !treino?.realizado &&
+      !aquecimentoFeito?.concluida &&
+      !(registros[foco.uid] || []).some((linha) => linha.concluida),
+  );
 
   useEffect(() => {
     if (!foco || !exercicio) return undefined;
+    if (aquecimentoPendente) {
+      setCarga('');
+      setRepeticoes('');
+      setErroAcao('');
+      return undefined;
+    }
     const salva = (registrosRef.current[foco.uid] || []).find((linha) => linha.numero === foco.serie);
     const historico = progresso[exercicio.exercicioId]?.sessoes?.[0];
     const referencia = historico?.series?.find((serie) => Number(serie.numero) === foco.serie);
@@ -296,9 +327,8 @@ const ExecucaoTreinoPage = () => {
       setRepeticoes('');
     }
     setErroAcao('');
-    setTecnicaAberta(false);
     return undefined;
-  }, [foco, exercicio, progresso]);
+  }, [foco, exercicio, progresso, aquecimentoPendente]);
 
   useEffect(() => {
     if (!execucao?.descansoUid) {
@@ -308,10 +338,6 @@ const ExecucaoTreinoPage = () => {
     if (restanteAnterior.current > 0 && restante === 0 && fase !== 'resumo') {
       const destino = { uid: execucao.descansoUid, serie: Number(execucao.descansoSerie) || 1 };
       const mesmoExercicio = destino.uid === focoRef.current?.uid;
-      if (somLiberado.current && audioRef.current) {
-        audioRef.current.currentTime = 0;
-        audioRef.current.play().catch(() => {});
-      }
       if (mesmoExercicio) {
         setFoco(destino);
         api
@@ -370,14 +396,25 @@ const ExecucaoTreinoPage = () => {
         setErroAcao('Use números válidos. A carga aceita decimal, como 22,5, e não pode ser negativa.');
         return false;
       }
-      registrosRef.current = novas;
-      setRegistros(novas);
       try {
         await api.saveWorkoutExecution(id, { exercicios: payload.exercicios });
+        registrosRef.current = novas;
+        setRegistros(novas);
         return true;
-      } catch {
-        registrosRef.current = anteriores;
-        setRegistros(anteriores);
+      } catch (error) {
+        if (!error?.response) {
+          try {
+            const atual = await api.getWorkoutExecution(id);
+            if (execucaoConfirmaPayload(atual?.data, payload.exercicios)) {
+              registrosRef.current = novas;
+              setRegistros(novas);
+              return true;
+            }
+          } catch {
+            setErroAcao('Sem resposta do servidor. Os dados continuam na tela; recarregue ou tente de novo.');
+            return false;
+          }
+        }
         setErroAcao('Não foi possível salvar esta série. Os dados continuam na tela; tente de novo.');
         return false;
       }
@@ -385,8 +422,76 @@ const ExecucaoTreinoPage = () => {
     [id],
   );
 
+  const concluirAquecimento = async () => {
+    if (!exercicio || !foco || processandoRef.current || treino?.realizado || !aquecimentoPendente) return;
+    const cargaLida = lerCarga(carga);
+    const repsLidas = lerRepeticoes(repeticoes);
+    const pesoCorporal = exercicio.tipoCarga === 'peso_corporal';
+    if (cargaLida.erro || repsLidas.erro || repsLidas.valor === null) {
+      setErroAcao('Informe as repetições da série leve. A carga aceita decimal, como 22,5, e não pode ser negativa.');
+      return;
+    }
+    if (!pesoCorporal && cargaLida.valor === null) {
+      setErroAcao('Informe a carga usada na série leve.');
+      return;
+    }
+    processandoRef.current = true;
+    setProcessando(true);
+    setErroAcao('');
+    const cargaFinal = cargaLida.valor === null ? 0 : cargaLida.valor;
+    const registro = {
+      carga: cargaFinal,
+      repeticoes: repsLidas.valor,
+      concluida: true,
+    };
+    const payload = montarPayload(registrosRef.current);
+    if (payload.invalido) {
+      processandoRef.current = false;
+      setProcessando(false);
+      setErroAcao('Use números válidos. A carga aceita decimal, como 22,5, e não pode ser negativa.');
+      return;
+    }
+    const lista = payload.exercicios.slice();
+    const atual = lista.find((item) => item.uid === foco.uid);
+    if (atual) atual.aquecimento = registro;
+    else lista.push({ uid: foco.uid, series: [], aquecimento: registro });
+    try {
+      await api.saveWorkoutExecution(id, { exercicios: lista });
+      setExecucao((atualExecucao) => {
+        const gravados = Array.isArray(atualExecucao?.exercicios)
+          ? atualExecucao.exercicios.map((item) => ({ ...item }))
+          : [];
+        const posicao = gravados.findIndex((item) => item?.uid === foco.uid);
+        if (posicao >= 0) gravados[posicao] = { ...gravados[posicao], aquecimento: registro };
+        else gravados.push({ uid: foco.uid, series: [], aquecimento: registro });
+        return { ...(atualExecucao || {}), exercicios: gravados };
+      });
+      setCarga('');
+      setRepeticoes('');
+    } catch (error) {
+      if (!error?.response) {
+        try {
+          const atual = await api.getWorkoutExecution(id);
+          if (execucaoConfirmaAquecimento(atual?.data, foco.uid, registro)) {
+            if (atual?.data) setExecucao(atual.data);
+            setCarga('');
+            setRepeticoes('');
+          } else {
+            setErroAcao('Não foi possível confirmar o aquecimento. Os dados continuam na tela; tente de novo.');
+          }
+        } catch {
+          setErroAcao('Sem resposta do servidor. O aquecimento continua na tela; recarregue ou tente de novo.');
+        }
+      } else {
+        setErroAcao('Não foi possível salvar o aquecimento. Tente de novo.');
+      }
+    }
+    processandoRef.current = false;
+    setProcessando(false);
+  };
+
   const concluirSerie = async () => {
-    if (!exercicio || !foco || processandoRef.current || treino?.realizado) return;
+    if (!exercicio || !foco || processandoRef.current || treino?.realizado || aquecimentoPendente) return;
     if (linhaAtual?.concluida) {
       await corrigirSerie();
       return;
@@ -405,17 +510,6 @@ const ExecucaoTreinoPage = () => {
     processandoRef.current = true;
     setProcessando(true);
     setErroAcao('');
-    somLiberado.current = true;
-    if (!audioRef.current) audioRef.current = new Audio(SOM_DESCANSO);
-    audioRef.current.volume = 0;
-    audioRef.current
-      .play()
-      .then(() => {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-        audioRef.current.volume = 0.4;
-      })
-      .catch(() => {});
     const cargaFinal = cargaLida.valor === null ? 0 : cargaLida.valor;
     const salvou = await salvarLinhas(foco.uid, (linha) =>
       linha.numero === foco.serie
@@ -458,19 +552,21 @@ const ExecucaoTreinoPage = () => {
   };
 
   const corrigirSerie = async () => {
-    if (!foco || processandoRef.current) return;
+    if (!foco || !exercicio || processandoRef.current || treino?.realizado) return;
     const cargaLida = lerCarga(carga);
     const repsLidas = lerRepeticoes(repeticoes);
-    const pesoCorporal = exercicio?.tipoCarga === 'peso_corporal';
+    const pesoCorporal = exercicio.tipoCarga === 'peso_corporal';
     if (cargaLida.erro || repsLidas.erro || repsLidas.valor === null || (!pesoCorporal && cargaLida.valor === null)) {
       setErroAcao('Para corrigir, informe a carga e as repetições.');
       return;
     }
     processandoRef.current = true;
     setProcessando(true);
+    setErroAcao('');
     const cargaFinal = cargaLida.valor === null ? 0 : cargaLida.valor;
+    const serieCorrigida = Number(foco.serie);
     const salvou = await salvarLinhas(foco.uid, (linha) =>
-      linha.numero === foco.serie
+      Number(linha.numero) === serieCorrigida
         ? {
             ...linha,
             carga: formatarCarga(cargaFinal),
@@ -479,7 +575,17 @@ const ExecucaoTreinoPage = () => {
           }
         : linha,
     );
-    if (salvou) setErroAcao('');
+    if (!salvou) {
+      processandoRef.current = false;
+      setProcessando(false);
+      return;
+    }
+    const pendencia = primeiraPendencia(exercicios, registrosRef.current, pulados);
+    if (!pendencia) {
+      setFase('resumo');
+    } else {
+      await irPara(pendencia);
+    }
     processandoRef.current = false;
     setProcessando(false);
   };
@@ -548,18 +654,6 @@ const ExecucaoTreinoPage = () => {
     await irPara(destino, lista);
   };
 
-  const serieAnterior = () => {
-    if (!foco || indice < 0) return;
-    if (foco.serie > 1) {
-      irPara({ uid: foco.uid, serie: foco.serie - 1 });
-      return;
-    }
-    if (indice > 0) {
-      const anterior = exercicios[indice - 1];
-      irPara({ uid: uidDoExercicio(anterior, indice - 1), serie: Number(anterior.series) || 1 });
-    }
-  };
-
   const sair = async () => {
     const atual = execRef.current;
     if (atual?.status === 'em_andamento' && atual.retomadoEm && !treino?.realizado) {
@@ -568,7 +662,7 @@ const ExecucaoTreinoPage = () => {
       } catch {}
     }
     sessionStorage.removeItem(chave);
-    navigate(`/treino/${id}`);
+    navigate(`/treino/${id}`, { replace: true, state: estadoOrigem(location.state?.origem) });
   };
 
   const finalizar = async () => {
@@ -580,16 +674,34 @@ const ExecucaoTreinoPage = () => {
     processandoRef.current = true;
     setProcessando(true);
     setConfirmarFim(false);
+    const marcarConcluido = (treinoSalvo) => {
+      setTreino(treinoSalvo);
+      setExecucao((atual) => (atual ? { ...atual, status: 'concluida' } : atual));
+      setFase('resumo');
+      sessionStorage.removeItem(chave);
+    };
     try {
       const resposta = await api.completeWorkout(id, { duracaoRealSegundos: segundosDecorridos(execRef.current) });
-      if (resposta?.success && resposta.data) {
-        setTreino(resposta.data);
-        setExecucao((atual) => (atual ? { ...atual, status: 'concluida' } : atual));
-        setFase('resumo');
-        sessionStorage.removeItem(chave);
+      if (resposta?.success && resposta.data?.realizado) {
+        marcarConcluido(resposta.data);
+      } else {
+        setErroAcao('O servidor não confirmou a conclusão. O treino continua aberto.');
       }
-    } catch {
-      setErroAcao('Não foi possível finalizar o treino. Nada foi marcado como concluído.');
+    } catch (error) {
+      if (!error?.response) {
+        try {
+          const atual = await api.getWorkout(id);
+          if (atual?.data?.realizado) {
+            marcarConcluido(atual.data);
+          } else {
+            setErroAcao('Não foi possível confirmar a conclusão. O treino continua aberto; tente de novo.');
+          }
+        } catch {
+          setErroAcao('Sem resposta do servidor. Recarregue a página antes de tentar de novo.');
+        }
+      } else {
+        setErroAcao('Não foi possível finalizar o treino. Nada foi marcado como concluído.');
+      }
     }
     processandoRef.current = false;
     setProcessando(false);
@@ -597,12 +709,40 @@ const ExecucaoTreinoPage = () => {
 
   if (carregando) return <LoadingSpinner />;
 
-  const historico = exercicio ? progresso[exercicio.exercicioId]?.sessoes?.[0] : null;
+  const progressoExercicio = exercicio ? progresso[exercicio.exercicioId] : null;
+  const historico = progressoExercicio?.sessoes?.[0] || null;
+  const sugestao = progressoExercicio?.recomendacao || null;
   const seguinte = indice >= 0 ? exercicios[indice + 1] : null;
   const emDescanso = restante > 0 && fase !== 'resumo' && fase !== 'transicao';
+  const partesDescanso = execucao?.descansoRotulo ? partirRotulo(execucao.descansoRotulo) : null;
+  const painelAtual = foco?.uid ? painelPorExercicio[foco.uid] || null : null;
+  const alternarPainel = (alvo) => {
+    if (!foco?.uid) return;
+    setPainelPorExercicio((atual) => {
+      const proximo = atual[foco.uid] === alvo ? null : alvo;
+      seguirPainel.current = proximo;
+      return { ...atual, [foco.uid]: proximo };
+    });
+  };
   const pesoCorporal = exercicio?.tipoCarga === 'peso_corporal';
   const totalDescanso = Number(execucao?.descansoSegundos) || restante || 1;
   const anel = CIRCUNFERENCIA * (1 - Math.min(1, restante / totalDescanso));
+  const cena = {
+    initial: reduzir ? false : { opacity: 0, y: 8 },
+    animate: { opacity: 1, y: 0 },
+    exit: reduzir ? { opacity: 1 } : { opacity: 0, y: -6 },
+    transition: passo(reduzir),
+  };
+  const confirmarNoEnter = (event) => {
+    if (event.key !== 'Enter' || event.repeat) return;
+    if (event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+    const alvo = event.target;
+    if (alvo instanceof Element && alvo.closest('button, a, textarea, select')) return;
+    if (processando || treino?.realizado || confirmarPular) return;
+    event.preventDefault();
+    if (aquecimentoPendente) concluirAquecimento();
+    else concluirSerie();
+  };
 
   return (
     <Container className="custom-scroll">
@@ -632,9 +772,11 @@ const ExecucaoTreinoPage = () => {
               <TreinoTitulo>{treino.titulo}</TreinoTitulo>
               <ExecucaoFaixa>
                 <MetaExercicio style={{ margin: 0 }}>
-                  {[rotuloDivisao(treino), treino.letraTreino ? `Treino ${treino.letraTreino}` : null]
-                    .filter(Boolean)
-                    .join(' · ')}
+                  <RotuloDestaque>
+                    {[rotuloDivisao(treino), treino.letraTreino ? `Treino ${treino.letraTreino}` : null]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </RotuloDestaque>
                 </MetaExercicio>
                 <Relogio>
                   <FiClock />
@@ -674,7 +816,9 @@ const ExecucaoTreinoPage = () => {
               </ProgressoBloco>
             </ExecucaoTopo>
 
+            <AnimatePresence mode="wait" initial={false}>
             {fase === 'resumo' ? (
+              <motion.div key="resumo" {...cena} style={{ width: '100%' }}>
               <ResumoSessao
                 treino={treino}
                 exercicios={exercicios}
@@ -693,14 +837,21 @@ const ExecucaoTreinoPage = () => {
                   const pendencia = primeiraPendencia(exercicios, registros, []);
                   if (pendencia) irPara(pendencia, pulados.filter((uid) => uid !== pendencia.uid));
                 }}
-                onVoltar={() => navigate('/treino')}
+                onVoltar={() => {
+                  if (treino?.realizado) {
+                    navigate(`/treino/${id}`, { replace: true, state: estadoOrigem(location.state?.origem) });
+                  } else sair();
+                }}
               />
+              </motion.div>
             ) : fase === 'transicao' && transicao ? (
-              <MissaoCard {...ENTRADA}>
+              <MissaoCard key="transicao" {...cena}>
                 <ExercicioEtapa>Exercício concluído</ExercicioEtapa>
                 <NomeExercicio>{transicao.concluido}</NomeExercicio>
                 <MetaExercicio>Séries previstas finalizadas.</MetaExercicio>
-                <ProximoDiscreto>Próximo exercício: {transicao.proximo}</ProximoDiscreto>
+                <ProximoDiscreto>
+                  <TextoClaro>Próximo exercício:</TextoClaro> <RotuloDestaque>{transicao.proximo}</RotuloDestaque>
+                </ProximoDiscreto>
                 <BotaoConcluir
                   type="button"
                   onClick={() => irPara({ uid: transicao.uid, serie: transicao.serie })}
@@ -711,7 +862,7 @@ const ExecucaoTreinoPage = () => {
                 </BotaoConcluir>
               </MissaoCard>
             ) : emDescanso ? (
-              <MissaoCard {...ENTRADA}>
+              <MissaoCard key="descanso" {...cena}>
                 <DescansoTela>
                   <DescansoTitulo>DESCANSO</DescansoTitulo>
                   <Anel>
@@ -732,7 +883,18 @@ const ExecucaoTreinoPage = () => {
                     </svg>
                     <DescansoNumero>{formatarRelogio(restante).slice(3)}</DescansoNumero>
                   </Anel>
-                  <MetaExercicio>{execucao?.descansoRotulo || 'Prepare a próxima série.'}</MetaExercicio>
+                  {partesDescanso?.rotulo === 'Próximo exercício' ? (
+                    <MetaExercicio>
+                      <TextoClaro>Próximo exercício:</TextoClaro>{' '}
+                      <RotuloDestaque>{partesDescanso.valor}</RotuloDestaque>
+                    </MetaExercicio>
+                  ) : partesDescanso ? (
+                    <MetaExercicio>
+                      <RotuloDestaque>{partesDescanso.rotulo}:</RotuloDestaque> {partesDescanso.valor}
+                    </MetaExercicio>
+                  ) : (
+                    <MetaExercicio>Prepare a próxima série.</MetaExercicio>
+                  )}
                   <BotaoPular
                     type="button"
                     onClick={pularDescanso}
@@ -742,30 +904,57 @@ const ExecucaoTreinoPage = () => {
                   >
                     PULAR DESCANSO
                   </BotaoPular>
-                  <BotaoAcao type="button" onClick={serieAnterior} whileHover={HOVER_BOTAO} whileTap={TOQUE_BOTAO}>
-                    Corrigir série anterior
-                  </BotaoAcao>
                 </DescansoTela>
               </MissaoCard>
             ) : exercicio && foco ? (
-              <MissaoCard {...ENTRADA}>
+              <MissaoCard
+                key={`${foco.uid}-${foco.serie}${aquecimentoPendente ? '-aquecimento' : ''}`}
+                {...cena}
+                onKeyDown={confirmarNoEnter}
+              >
                 <ExercicioEtapa>
                   Exercício {indice + 1} de {exercicios.length}
                 </ExercicioEtapa>
                 <NomeExercicio>{exercicio.nome}</NomeExercicio>
-                <MetaExercicio>{porcaoLegivel(exercicio)}</MetaExercicio>
-                <SerieAtual>
-                  Série {foco.serie} de {exercicio.series}
-                  {linhaAtual?.concluida ? ' · concluída' : ''}
-                </SerieAtual>
-                <MetaExercicio>Meta: {exercicio.repeticoes} repetições</MetaExercicio>
-                <MetaExercicio>Descanso: {exercicio.descanso}</MetaExercicio>
-                {rotuloCarga(exercicio) && <MetaExercicio>{rotuloCarga(exercicio)}</MetaExercicio>}
+                {porcaoLegivel(exercicio) && <MetaExercicio>{porcaoLegivel(exercicio)}</MetaExercicio>}
+                {aquecimentoPendente ? (
+                  <SerieAtual>Aquecimento</SerieAtual>
+                ) : (
+                  <SerieAtual>
+                    Série {foco.serie} de {exercicio.series}
+                    {linhaAtual?.concluida ? <span> · concluída</span> : null}
+                  </SerieAtual>
+                )}
+                {aquecimentoPendente ? (
+                  <MetaExercicio>
+                    <RotuloDestaque>Aquecimento:</RotuloDestaque>{' '}
+                    {textoAquecimento(exercicio, indice).replace(/^Aquecimento:\s*/, '')}
+                  </MetaExercicio>
+                ) : (
+                  <>
+                    <MetaExercicio>
+                      <RotuloDestaque>Meta:</RotuloDestaque> {exercicio.repeticoes} repetições
+                    </MetaExercicio>
+                    <MetaExercicio>
+                      <RotuloDestaque>Descanso:</RotuloDestaque> {exercicio.descanso}
+                    </MetaExercicio>
+                    {orientacaoDeCarga(exercicio.repeticoes, exercicio.rirAlvo) && (
+                      <MetaExercicio>{orientacaoDeCarga(exercicio.repeticoes, exercicio.rirAlvo)}</MetaExercicio>
+                    )}
+                  </>
+                )}
                 {historico && (
                   <Referencia>
-                    Última execução
-                    {historico.data ? ` · ${new Date(historico.data).toLocaleDateString('pt-BR')}` : ''}:{' '}
+                    <RotuloDestaque>Última execução:</RotuloDestaque>{' '}
+                    {historico.data ? `${new Date(historico.data).toLocaleDateString('pt-BR')} · ` : ''}
                     {descreverSeries(historico.series)}
+                  </Referencia>
+                )}
+                {sugestao?.titulo && (
+                  <Referencia>
+                    <RotuloDestaque>Sugestão:</RotuloDestaque>{' '}
+                    {simplificarTexto(sugestao.titulo) || sugestao.titulo}
+                    {sugestao.texto ? ` — ${simplificarTexto(sugestao.texto)}` : ''}
                   </Referencia>
                 )}
                 <Campos>
@@ -779,7 +968,7 @@ const ExecucaoTreinoPage = () => {
                       value={carga}
                       disabled={treino.realizado || processando}
                       maxLength={8}
-                      erro={lerCarga(carga).erro}
+                      $erro={lerCarga(carga).erro}
                       onChange={(event) => setCarga(event.target.value)}
                     />
                   </CampoBloco>
@@ -793,7 +982,7 @@ const ExecucaoTreinoPage = () => {
                       value={repeticoes}
                       disabled={treino.realizado || processando}
                       maxLength={3}
-                      erro={lerRepeticoes(repeticoes).erro}
+                      $erro={lerRepeticoes(repeticoes).erro}
                       onChange={(event) => setRepeticoes(event.target.value.replace(/\D/g, ''))}
                     />
                   </CampoBloco>
@@ -801,13 +990,19 @@ const ExecucaoTreinoPage = () => {
                 {!treino.realizado && (
                   <BotaoConcluir
                     type="button"
-                    onClick={concluirSerie}
+                    onClick={aquecimentoPendente ? concluirAquecimento : concluirSerie}
                     disabled={processando}
                     whileHover={processando ? undefined : HOVER_PRINCIPAL}
                     whileTap={processando ? undefined : TOQUE_PRINCIPAL}
                   >
                     <FiCheck />
-                    {processando ? 'SALVANDO…' : linhaAtual?.concluida ? 'SALVAR CORREÇÃO' : 'CONCLUIR SÉRIE'}
+                    {processando
+                      ? 'SALVANDO…'
+                      : aquecimentoPendente
+                        ? 'CONCLUIR AQUECIMENTO'
+                        : linhaAtual?.concluida
+                          ? 'SALVAR CORREÇÃO'
+                          : 'CONCLUIR SÉRIE'}
                   </BotaoConcluir>
                 )}
                 {erroAcao && <AvisoExecucao>{erroAcao}</AvisoExecucao>}
@@ -825,33 +1020,44 @@ const ExecucaoTreinoPage = () => {
                   onCancelar={() => setConfirmarPular(false)}
                 />
                 {seguinte && !pulados.includes(uidDoExercicio(seguinte, indice + 1)) && (
-                  <ProximoDiscreto>Em seguida: {seguinte.nome}</ProximoDiscreto>
+                  <ProximoDiscreto>
+                    <TextoClaro>Próximo exercício:</TextoClaro> <RotuloDestaque>{seguinte.nome}</RotuloDestaque>
+                  </ProximoDiscreto>
                 )}
                 <AcoesExecucao>
                   <BotaoAcao
                     type="button"
-                    onClick={serieAnterior}
-                    disabled={indice === 0 && foco.serie === 1}
-                    whileHover={indice === 0 && foco.serie === 1 ? undefined : HOVER_BOTAO}
-                    whileTap={indice === 0 && foco.serie === 1 ? undefined : TOQUE_BOTAO}
-                  >
-                    Série anterior
-                  </BotaoAcao>
-                  <BotaoAcao
-                    type="button"
-                    onClick={() => setSeriesAbertas((atual) => !atual)}
+                    aria-expanded={painelAtual === 'series'}
+                    aria-controls={`series-${foco.uid}`}
+                    onClick={() => alternarPainel('series')}
                     whileHover={HOVER_BOTAO}
                     whileTap={TOQUE_BOTAO}
                   >
-                    {seriesAbertas ? 'Ocultar séries' : 'Séries feitas'}
+                    {painelAtual === 'series' ? 'Ocultar séries' : 'Ver séries'}
+                    <SetaPainel
+                      aria-hidden="true"
+                      animate={{ rotate: painelAtual === 'series' ? 180 : 0 }}
+                      transition={passo(reduzir)}
+                    >
+                      <FiChevronDown />
+                    </SetaPainel>
                   </BotaoAcao>
                   <BotaoAcao
                     type="button"
-                    onClick={() => setTecnicaAberta((atual) => !atual)}
+                    aria-expanded={painelAtual === 'cuidados'}
+                    aria-controls={`cuidados-${foco.uid}`}
+                    onClick={() => alternarPainel('cuidados')}
                     whileHover={HOVER_BOTAO}
                     whileTap={TOQUE_BOTAO}
                   >
-                    Técnica
+                    {painelAtual === 'cuidados' ? 'Ocultar cuidados' : 'Cuidados'}
+                    <SetaPainel
+                      aria-hidden="true"
+                      animate={{ rotate: painelAtual === 'cuidados' ? 180 : 0 }}
+                      transition={passo(reduzir)}
+                    >
+                      <FiChevronDown />
+                    </SetaPainel>
                   </BotaoAcao>
                   {!treino.realizado && (
                     <BotaoAcao
@@ -864,56 +1070,78 @@ const ExecucaoTreinoPage = () => {
                     </BotaoAcao>
                   )}
                 </AcoesExecucao>
-                {seriesAbertas && (
-                  <ListaSeries>
-                    {linhas.filter((linha) => linha.concluida).length === 0 && (
-                      <ItemSerie>Nenhuma série concluída neste exercício.</ItemSerie>
-                    )}
-                    {linhas
-                      .filter((linha) => linha.concluida)
-                      .map((linha) => (
-                        <ItemSerie key={linha.numero}>
-                          <span>
-                            Série {linha.numero}: {linha.carga || '0'} kg × {linha.repeticoes || '–'}
-                          </span>
-                          <BotaoTexto
-                            type="button"
-                            onClick={() => irPara({ uid: foco.uid, serie: linha.numero })}
-                            whileHover={HOVER_BOTAO}
-                            whileTap={TOQUE_BOTAO}
-                          >
-                            Corrigir
-                          </BotaoTexto>
-                        </ItemSerie>
-                      ))}
-                  </ListaSeries>
-                )}
-                <AnimatePresence initial={false}>
-                  {tecnicaAberta && (
-                    <TecnicaPainel
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25 }}
+                <AnimatePresence mode="wait" initial={false}>
+                  {painelAtual === 'series' && (
+                    <motion.div
+                      id={`series-${foco.uid}`}
+                      ref={seriesPainel}
+                      key="series"
+                      initial={reduzir ? false : { height: 0 }}
+                      animate={{ height: 'auto' }}
+                      exit={{ height: 0, transition: passo(reduzir) }}
+                      transition={passo(reduzir)}
+                      style={{ overflow: 'hidden' }}
+                      onUpdate={() => {
+                        if (seguirPainel.current !== 'series' || reduzir) return;
+                        acompanharAbertura(seriesPainel.current);
+                      }}
+                      onAnimationComplete={() => {
+                        if (seguirPainel.current !== 'series') return;
+                        acompanharAbertura(seriesPainel.current);
+                        seguirPainel.current = null;
+                      }}
                     >
-                      <Tecnica>
-                        <strong>Técnica:</strong> {exercicio.tecnica}
-                      </Tecnica>
-                      {exercicio.cuidado && (
-                        <Tecnica>
-                          <strong>Cuidado:</strong> {exercicio.cuidado}
-                        </Tecnica>
-                      )}
-                      {exercicio.erroComum && (
-                        <Tecnica>
-                          <strong>Erro comum:</strong> {exercicio.erroComum}
-                        </Tecnica>
-                      )}
+                      <ListaSeries style={{ marginTop: 0, paddingTop: '0.85rem' }}>
+                        {linhas.filter((linha) => linha.concluida).length === 0 && (
+                          <ItemSerie>Nenhuma série concluída neste exercício.</ItemSerie>
+                        )}
+                        {linhas
+                          .filter((linha) => linha.concluida)
+                          .map((linha) => (
+                            <ItemSerie key={linha.numero}>
+                              <span>
+                                <RotuloDestaque>Série {linha.numero}:</RotuloDestaque>{' '}
+                                {linha.carga || '0'} kg × {linha.repeticoes || '–'}
+                              </span>
+                              <BotaoTexto
+                                type="button"
+                                onClick={() => irPara({ uid: foco.uid, serie: linha.numero })}
+                                whileHover={HOVER_BOTAO}
+                                whileTap={TOQUE_BOTAO}
+                              >
+                                Corrigir
+                              </BotaoTexto>
+                            </ItemSerie>
+                          ))}
+                      </ListaSeries>
+                    </motion.div>
+                  )}
+                  {painelAtual === 'cuidados' && (
+                    <TecnicaPainel
+                      id={`cuidados-${foco.uid}`}
+                      ref={cuidadosPainel}
+                      key="cuidados"
+                      initial={reduzir ? false : { height: 0 }}
+                      animate={{ height: 'auto' }}
+                      exit={{ height: 0, transition: passo(reduzir) }}
+                      transition={passo(reduzir)}
+                      onUpdate={() => {
+                        if (seguirPainel.current !== 'cuidados' || reduzir) return;
+                        acompanharAbertura(cuidadosPainel.current);
+                      }}
+                      onAnimationComplete={() => {
+                        if (seguirPainel.current !== 'cuidados') return;
+                        acompanharAbertura(cuidadosPainel.current);
+                        seguirPainel.current = null;
+                      }}
+                    >
+                      <DetalhesExercicio exercicio={exercicio} />
                     </TecnicaPainel>
                   )}
                 </AnimatePresence>
               </MissaoCard>
             ) : null}
+            </AnimatePresence>
           </TreinoDisplay>
           </motion.div>
         )}
@@ -921,6 +1149,38 @@ const ExecucaoTreinoPage = () => {
     </Container>
   );
 };
+
+function partirRotulo(texto) {
+  const indice = String(texto).indexOf(':');
+  if (indice < 0) return { rotulo: String(texto), valor: '' };
+  const rotulo = String(texto).slice(0, indice).trim();
+  const valor = String(texto).slice(indice + 1).trim();
+  if (rotulo === 'Próximo') return { rotulo: 'Próximo exercício', valor };
+  return { rotulo, valor };
+}
+
+function acompanharAbertura(elemento) {
+  if (!elemento) return;
+  const margem = 24;
+  const fundo = elemento.getBoundingClientRect().bottom + margem;
+  let pai = elemento.parentElement;
+  while (pai && pai !== document.body && pai !== document.documentElement) {
+    const estilo = window.getComputedStyle(pai);
+    const podeRolar = /(auto|scroll)/.test(estilo.overflowY);
+    if (podeRolar && pai.scrollHeight > pai.clientHeight + 1) {
+      const limite = pai.getBoundingClientRect().bottom - margem;
+      if (fundo > limite) pai.scrollTop += fundo - limite;
+      return;
+    }
+    pai = pai.parentElement;
+  }
+  if (fundo <= window.innerHeight) return;
+  const pagina = document.scrollingElement || document.documentElement;
+  const comportamento = pagina.style.scrollBehavior;
+  pagina.style.scrollBehavior = 'auto';
+  pagina.scrollTop += fundo - window.innerHeight;
+  pagina.style.scrollBehavior = comportamento;
+}
 
 function primeiraPendencia(exercicios, registros, pulados) {
   for (let index = 0; index < exercicios.length; index += 1) {
@@ -992,8 +1252,8 @@ function ResumoSessao({
     .map((exercicio) => exercicio.nome);
 
   return (
-    <MissaoCard {...ENTRADA}>
-      <ExercicioEtapa>{pendentes > 0 ? 'Sessão encerrada com pendências' : 'Treino concluído'}</ExercicioEtapa>
+    <MissaoCard>
+      <ExercicioEtapa>{pendentes > 0 ? 'Treino encerrado com pendências' : 'Treino concluído'}</ExercicioEtapa>
       <NomeExercicio>{treino.titulo}</NomeExercicio>
       <ResumoLista>
         <ResumoLinha>
@@ -1026,7 +1286,7 @@ function ResumoSessao({
           return (
             <ItemSerie key={uid}>
               <span>
-                {exercicio.nome}
+                <RotuloDestaque>{exercicio.nome}</RotuloDestaque>
                 {pulados.includes(uid) ? ' · pulado' : ''}
                 {feitas.length
                   ? ` · ${feitas.map((linha) => `${linha.carga || '0'} kg × ${linha.repeticoes}`).join(', ')}`
@@ -1069,7 +1329,7 @@ function ResumoSessao({
           </BotaoAcao>
         )}
         <BotaoAcao type="button" onClick={onVoltar} whileHover={HOVER_BOTAO} whileTap={TOQUE_BOTAO}>
-          Voltar aos treinos
+          Voltar à ficha
         </BotaoAcao>
       </AcoesExecucao>
     </MissaoCard>
