@@ -158,14 +158,52 @@ class ApiService {
     });
   }
 
-  async getWorkoutProgram() {
-    return this.request('/workouts/programa');
+  async gerarTreinoAvulso({ foco, tempoDisponivel, chave }) {
+    return this.request('/workouts/generate', {
+      method: 'POST',
+      body: JSON.stringify({ foco, tempoDisponivel, chave }),
+    });
   }
 
-  async saveWorkoutProgram(dados = {}) {
-    return this.request('/workouts/programa', {
+  async getRotina() {
+    return this.request('/rotina');
+  }
+
+  async getOpcoesRotina() {
+    return this.request('/rotina/opcoes');
+  }
+
+  async previaRotina(corpo) {
+    return this.request('/rotina/previa', {
       method: 'POST',
-      body: JSON.stringify(dados),
+      body: JSON.stringify(corpo),
+    });
+  }
+
+  async alternativasPrevia(corpo) {
+    return this.request('/rotina/previa/alternativas', {
+      method: 'POST',
+      body: JSON.stringify(corpo),
+    });
+  }
+
+  async salvarRotina(corpo) {
+    return this.request('/rotina', {
+      method: 'POST',
+      body: JSON.stringify(corpo),
+    });
+  }
+
+  async atualizarAgendaRotina(revisao, agenda) {
+    return this.request('/rotina/agenda', {
+      method: 'PATCH',
+      body: JSON.stringify({ revisao, agenda }),
+    });
+  }
+
+  async iniciarSessaoRotina(codigo) {
+    return this.request(`/rotina/sessoes/${encodeURIComponent(codigo)}/iniciar`, {
+      method: 'POST',
     });
   }
 

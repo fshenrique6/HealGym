@@ -73,7 +73,7 @@ public class UserController extends BaseController {
     Map<String, Object> body = body(request);
     Validator validator = new Validator(body);
     ProfileRules.apply(validator, false);
-    TrainingProfile.validate(validator, true);
+    TrainingProfile.validate(validator, false);
     if (validator.hasErrors()) {
       throw new ApiException(
           400, Json.obj("error", "Dados inválidos", "details", validator.errors()));

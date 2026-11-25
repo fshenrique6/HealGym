@@ -35,6 +35,14 @@ public final class ExerciseDatabase {
     public final String videoLicenca;
     public final String videoStatus;
     public boolean ativo = true;
+    /** Tronco inclinado sob carga, sem apoio que retire o peso da coluna. */
+    public boolean troncoInclinadoComCarga;
+    /** Carga apoiada sobre a coluna, como a barra no trapézio. */
+    public boolean cargaAxial;
+    /** Braços acima da cabeça em algum ponto do movimento. */
+    public boolean bracosAcimaDaCabeca;
+    /** Joelho passa por flexão acentuada, como no agachamento e no afundo. */
+    public boolean flexaoProfundaJoelho;
 
     Exercise(
         String id,

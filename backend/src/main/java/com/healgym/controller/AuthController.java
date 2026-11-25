@@ -135,6 +135,8 @@ public class AuthController extends BaseController {
                   "profile", user.getProfile().toDocument())));
     } catch (ApiException e) {
       throw e;
+    } catch (User.ValidationFailure e) {
+      throw error(400, e.getMessage());
     } catch (Exception e) {
       System.err.println("Erro no registro: " + e);
       throw internalError();

@@ -2,7 +2,6 @@ import styled from 'styled-components';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
 import {
   FiCalendar,
   FiChevronLeft,
@@ -12,7 +11,6 @@ import {
   FiX,
 } from 'react-icons/fi';
 import api from '../services/api';
-import { descreverSeries, rotuloDivisao, uidDoExercicio } from '../utils/treinoExecucao';
 import {
   Cabecalho,
   cascaDialogo,
@@ -124,69 +122,12 @@ const rotuloAcessivel = (data, quantidade, hoje) => {
   return hoje ? `${quando}, hoje, ${registro}` : `${quando}, ${registro}`;
 };
 
-const divisaoDoTreino = (treino) =>
-  [rotuloDivisao(treino), treino?.letraTreino ? `Treino ${treino.letraTreino}` : null]
-    .filter(Boolean)
-    .join(' · ');
-
-const duracaoRegistrada = (treino) => {
-  const segundos = Number(treino?.duracaoRealSegundos);
-  if (!Number.isFinite(segundos) || segundos <= 0) return null;
-  return `${Math.max(1, Math.round(segundos / 60))} min`;
-};
-
-const tempoPrevisto = (treino) => {
-  const minutos = Number(treino?.tempoDisponivel);
-  if (!Number.isFinite(minutos) || minutos <= 0) return null;
-  return `${Math.round(minutos)} min`;
-};
-
-const horaRegistrada = (treino) => {
-  const data = treino?.dataRealizacao ? new Date(treino.dataRealizacao) : null;
-  if (!data || Number.isNaN(data.getTime())) return null;
-  return data.toLocaleTimeString('pt-BR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
-const temMedida = (serie) => {
-  const temCarga = serie?.carga !== null && serie?.carga !== undefined && serie?.carga !== '';
-  const temReps =
-    serie?.repeticoes !== null && serie?.repeticoes !== undefined && serie?.repeticoes !== '';
-  return temCarga || temReps;
-};
-
-const seriesDoExercicio = (exercicio, indice, execucao) => {
-  if (!execucao || !Array.isArray(execucao.exercicios)) return [];
-  const uid = uidDoExercicio(exercicio, indice);
-  const entrada = execucao.exercicios.find((item) => item?.uid === uid);
-  if (!entrada || !Array.isArray(entrada.series)) return [];
-  return entrada.series.filter((serie) => Boolean(serie?.concluida) || temMedida(serie));
-};
-
-const textoSeries = (series) => {
-  const comMedidas = series.filter(temMedida);
-  const soConcluidas = series.filter((serie) => serie?.concluida && !temMedida(serie));
-  const partes = [];
-  if (comMedidas.length > 0) partes.push(descreverSeries(comMedidas));
-  if (soConcluidas.length === 1)
-    partes.push('1 série concluída, sem carga ou repetições informadas');
-  if (soConcluidas.length > 1) {
-    partes.push(`${soConcluidas.length} séries concluídas, sem carga ou repetições informadas`);
-  }
-  return partes.join(' · ');
-};
-
 const HOVER = { scale: 1.02 };
 const TOQUE = { scale: 0.98 };
 const HOVER_ICONE = { scale: 1.05 };
 const TOQUE_ICONE = { scale: 0.95 };
 const MOLA_MODAL = { type: 'spring', duration: 0.5 };
-const MOLA_PAINEL = { type: 'spring', duration: 0.4 };
-
-const CalendarioTreinos = ({ aberto, onFechar }) => {
-  const navigate = useNavigate();
+const CalendarioTreinos = ({ aberto, onFechar, onAbrirTreino }) => {
   const tituloId = useId();
   const mesId = useId();
   const dialogRef = useRef(null);
@@ -205,8 +146,6 @@ const CalendarioTreinos = ({ aberto, onFechar }) => {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState('');
   const [truncado, setTruncado] = useState(false);
-  const [execucoes, setExecucoes] = useState({});
-  const [carregandoExecucao, setCarregandoExecucao] = useState(false);
   const [visivel, setVisivel] = useState(aberto);
   const [abertoAntes, setAbertoAntes] = useState(aberto);
 
@@ -222,7 +161,6 @@ const CalendarioTreinos = ({ aberto, onFechar }) => {
       setMesCarregado(null);
       setErro('');
       setTruncado(false);
-      setExecucoes({});
       setCarregando(true);
       setVisivel(true);
     }
@@ -242,7 +180,9 @@ const CalendarioTreinos = ({ aberto, onFechar }) => {
   const noInicio = ano === 1970 && mes === 0;
   const podeAvancarAno =
     new Date(ano + 1, mes, 1) <= new Date(agora.getFullYear(), agora.getMonth(), 1);
-  const listaSelecionada = selecionado ? agrupados.get(selecionado) || [] : [];
+  const listaSelecionada = (selecionado ? agrupados.get(selecionado) || [] : []).filter(
+    (treino) => treino?._id,
+  );
   const dataSelecionada = selecionado ? dataDaChave(selecionado) : null;
   const mensagem = carregando
     ? 'Carregando treinos...'
@@ -353,49 +293,6 @@ const CalendarioTreinos = ({ aberto, onFechar }) => {
     dialogRef.current?.querySelector(`[data-dia="${foco}"]`)?.focus();
   }, [foco, ano, mes]);
 
-  useEffect(() => {
-    if (!selecionado || !pronto) return undefined;
-    const lista = agruparPorDia(treinos).get(selecionado) || [];
-    if (lista.length === 0) {
-      setExecucoes({});
-      setCarregandoExecucao(false);
-      return undefined;
-    }
-
-    let cancelado = false;
-    setCarregandoExecucao(true);
-    Promise.all(
-      lista.map(async (treino) => {
-        if (!treino?._id) return [null, { estado: 'vazio', dados: null }];
-        try {
-          const resposta = await api.getWorkoutExecution(treino._id);
-          if (!resposta?.success) return [treino._id, { estado: 'erro', dados: null }];
-          return [
-            treino._id,
-            {
-              estado: resposta.data ? 'ok' : 'vazio',
-              dados: resposta.data || null,
-            },
-          ];
-        } catch {
-          return [treino._id, { estado: 'erro', dados: null }];
-        }
-      }),
-    ).then((pares) => {
-      if (cancelado) return;
-      const mapa = {};
-      pares.forEach(([id, info]) => {
-        if (id) mapa[id] = info;
-      });
-      setExecucoes(mapa);
-      setCarregandoExecucao(false);
-    });
-
-    return () => {
-      cancelado = true;
-    };
-  }, [selecionado, treinos, pronto]);
-
   const irPara = (novoAno, novoMes, mover) => {
     const destino = limitarMes(novoAno, novoMes);
     const hoje = new Date();
@@ -426,7 +323,13 @@ const CalendarioTreinos = ({ aberto, onFechar }) => {
     if (!pronto) return;
     const chave = chaveLocal(data);
     setFoco(chave);
-    setSelecionado((atual) => (atual === chave ? null : chave));
+    const registrados = (agrupados.get(chave) || []).filter((treino) => treino?._id);
+    if (registrados.length === 1) {
+      setSelecionado(null);
+      onAbrirTreino?.(registrados[0]._id);
+      return;
+    }
+    setSelecionado(registrados.length > 1 ? chave : null);
   };
 
   const aoTeclarDia = (evento, data) => {
@@ -688,7 +591,7 @@ const CalendarioTreinos = ({ aberto, onFechar }) => {
 
               <AreaDetalhe>
               <AnimatePresence mode="wait">
-              {dataSelecionada && (
+              {dataSelecionada && listaSelecionada.length > 1 && (
                 <Detalhe
                   key={selecionado}
                   aria-live="polite"
@@ -698,89 +601,15 @@ const CalendarioTreinos = ({ aberto, onFechar }) => {
                   transition={{ duration: 0.2 }}
                 >
                   <DetalheTitulo>{tituloDia(dataSelecionada)}</DetalheTitulo>
-                  {listaSelecionada.length === 0 ? (
-                    <DetalheVazio>Nenhum treino registrado neste dia.</DetalheVazio>
-                  ) : (
-                    listaSelecionada.map((treino, indice) => {
-                      const execucao = treino._id ? execucoes[treino._id] : null;
-                      const divisao = divisaoDoTreino(treino);
-                      const duracao = duracaoRegistrada(treino);
-                      const previsto = tempoPrevisto(treino);
-                      const hora = horaRegistrada(treino);
-                      const exercicios = Array.isArray(treino.exercicios) ? treino.exercicios : [];
-                      return (
-                        <Ficha
-                          key={treino._id || `${selecionado}-${indice}`}
-                          initial={{ opacity: 0, y: 12 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ ...MOLA_PAINEL, delay: indice * 0.05 }}
-                        >
-                          <FichaTitulo>
-                            {treino.titulo || 'Treino sem título informado'}
-                          </FichaTitulo>
-                          <Metadados>
-                            <Meta>Status: realizado</Meta>
-                            {hora && <Meta>Horário registrado: {hora}</Meta>}
-                            {!treino.dataRealizacao && treino.createdAt && (
-                              <Meta>
-                                Sem data de realização. O dia usa a data em que o registro foi
-                                criado.
-                              </Meta>
-                            )}
-                            {divisao && <Meta>Divisão: {divisao}</Meta>}
-                            {duracao && <Meta>Duração registrada: {duracao}</Meta>}
-                            {previsto && <Meta>Tempo disponível: {previsto}</Meta>}
-                            {exercicios.length > 0 && (
-                              <Meta>
-                                {exercicios.length}{' '}
-                                {exercicios.length === 1 ? 'exercício' : 'exercícios'}
-                              </Meta>
-                            )}
-                          </Metadados>
-                          {treino.objetivo && <Objetivo>{treino.objetivo}</Objetivo>}
-                          {exercicios.length > 0 && (
-                            <ListaExercicios>
-                              {exercicios.map((exercicio, indiceExercicio) => {
-                                const series = seriesDoExercicio(
-                                  exercicio,
-                                  indiceExercicio,
-                                  execucao?.estado === 'ok' ? execucao.dados : null,
-                                );
-                                return (
-                                  <Exercicio
-                                    key={exercicio?.uid || `${treino._id}-${indiceExercicio}`}
-                                  >
-                                    <ExercicioNome>
-                                      {exercicio?.nome || 'Exercício sem nome informado'}
-                                    </ExercicioNome>
-                                    {series.length > 0 && <Series>{textoSeries(series)}</Series>}
-                                  </Exercicio>
-                                );
-                              })}
-                            </ListaExercicios>
-                          )}
-                          {carregandoExecucao && !execucao && (
-                            <AvisoExecucao>Carregando registros da execução...</AvisoExecucao>
-                          )}
-                          {execucao?.estado === 'erro' && (
-                            <AvisoExecucao>
-                              Não foi possível carregar os registros da execução deste treino.
-                            </AvisoExecucao>
-                          )}
-                          {treino._id && (
-                            <AbrirFicha
-                              type="button"
-                              onClick={() => navigate(`/treino/${treino._id}`)}
-                              whileHover={HOVER}
-                              whileTap={TOQUE}
-                            >
-                              Abrir ficha
-                            </AbrirFicha>
-                          )}
-                        </Ficha>
-                      );
-                    })
-                  )}
+                  {listaSelecionada.map((treino) => (
+                    <AbrirFicha
+                      key={treino._id}
+                      type="button"
+                      onClick={() => onAbrirTreino?.(treino._id)}
+                    >
+                      {treino.titulo || 'Treino'}
+                    </AbrirFicha>
+                  ))}
                 </Detalhe>
               )}
               </AnimatePresence>
@@ -1134,122 +963,37 @@ const DetalheTitulo = styled.h3`
   text-transform: none;
 `;
 
-const DetalheVazio = styled.p`
-  margin: 0;
-  color: var(--text-secondary);
-  font-family: 'Cormorant', serif;
-  font-style: normal;
-  font-size: 1rem;
-  line-height: 1.35;
-`;
-
-const Ficha = styled(motion.article)`
-  padding: 0.85rem 0.9rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(198, 169, 100, 0.2);
-  border-left: 3px solid #4caf50;
-
-  & + & {
-    margin-top: 0.7rem;
-  }
-`;
-
-const FichaTitulo = styled.h4`
-  margin: 0;
-  color: var(--white);
-  font-family: 'Cormorant', serif;
-  font-size: 1.15rem;
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: 0;
-  text-transform: none;
-`;
-
-const Metadados = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem 0.9rem;
-  margin-top: 0.4rem;
-`;
-
-const Meta = styled.span`
-  color: var(--text-secondary);
-  font-family: 'Cormorant', serif;
-  font-size: 0.98rem;
-  line-height: 1.3;
-`;
-
-const Objetivo = styled.p`
-  margin: 0.45rem 0 0;
-  color: rgba(224, 224, 224, 0.78);
-  font-family: 'Cormorant', serif;
-  font-style: normal;
-  font-size: 0.98rem;
-  line-height: 1.35;
-`;
-
-const ListaExercicios = styled.ul`
-  margin: 0.65rem 0 0;
-  padding: 0;
-  list-style: none;
-`;
-
-const Exercicio = styled.li`
-  padding: 0.4rem 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
-
-  &:first-child {
-    border-top: none;
-    padding-top: 0;
-  }
-`;
-
-const ExercicioNome = styled.div`
-  color: var(--white);
-  font-family: 'Cormorant', serif;
-  font-size: 1rem;
-  line-height: 1.3;
-`;
-
-const Series = styled.div`
-  margin-top: 0.1rem;
-  color: rgba(141, 206, 160, 0.95);
-  font-family: 'Cormorant', serif;
-  font-size: 0.92rem;
-  line-height: 1.3;
-`;
-
-const AvisoExecucao = styled.p`
-  margin: 0.55rem 0 0;
-  color: rgba(224, 224, 224, 0.66);
-  font-family: 'Cormorant', serif;
-  font-style: normal;
-  font-size: 0.92rem;
-  line-height: 1.3;
-`;
-
-const AbrirFicha = styled(motion.button)`
-  margin-top: 0.7rem;
+const AbrirFicha = styled.button`
+  display: block;
+  width: 100%;
+  margin-top: 0.45rem;
   border: 1px solid rgba(198, 169, 100, 0.45);
   background: transparent;
-  color: var(--accent);
+  color: var(--white);
   border-radius: 8px;
-  padding: 0.4rem 0.75rem;
-  font-family: 'Cormorant', serif;
-  font-size: 1rem;
+  padding: 0.55rem 0.75rem;
+  font-family: 'Cinzel', serif;
+  font-size: 0.82rem;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.3;
   letter-spacing: 0.03em;
+  text-align: left;
   text-transform: none;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease;
 
   &:hover {
     background: rgba(198, 169, 100, 0.12);
+    border-color: var(--accent);
   }
 
   &:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
   }
 `;
 

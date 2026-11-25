@@ -204,6 +204,27 @@ class PerfilTreinoTest {
   }
 
   @Test
+  void cadastroPessoalNaoExigeNemApagaDadosDeTreino() {
+    Map<String, Object> body = new LinkedHashMap<>();
+    body.put("gender", "feminino");
+    body.put("height", 168);
+    body.put("weight", 64);
+    body.put("bodyType", "mesomorfo");
+    body.put("age", 31);
+    Validator validator = new Validator(body);
+    TrainingProfile.validate(validator, false);
+    assertFalse(validator.hasErrors());
+
+    User.Profile profile = pessoal();
+    profile.trainingGoal = "hipertrofia";
+    profile.availableDays = 3;
+    TrainingProfile.apply(profile, body);
+    assertEquals("hipertrofia", profile.trainingGoal);
+    assertEquals(3, profile.availableDays);
+    assertEquals("masculino", profile.gender);
+  }
+
+  @Test
   void modeloNaoTemInterrupcaoAmbienteNemEquipamento() {
     assertEquals(
         List.of(

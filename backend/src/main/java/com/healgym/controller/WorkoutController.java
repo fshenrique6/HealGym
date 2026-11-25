@@ -2,6 +2,7 @@ package com.healgym.controller;
 
 import com.healgym.model.User;
 import com.healgym.repository.ExecutionRepository;
+import com.healgym.repository.RotinaRepository;
 import com.healgym.repository.WorkoutRepository;
 import com.healgym.security.AuthService;
 import com.healgym.service.CoberturaMuscular;
@@ -10,11 +11,21 @@ import com.healgym.service.ExerciseAnatomy;
 import com.healgym.service.ExerciseDatabase;
 import com.healgym.service.PrescricaoPerfil;
 import com.healgym.service.ProgramaSemanal;
+import com.healgym.service.ProgressaoCarga;
 import com.healgym.service.SessionPlanner;
 import com.healgym.service.WorkoutGenerator;
+import com.healgym.service.rotina.AquecimentoSessao;
+import com.healgym.service.rotina.MotorRotina;
+import com.healgym.service.rotina.PerfilInterpretado;
+import com.healgym.service.rotina.PreferenciasTreino;
+import com.healgym.service.rotina.RotinaServico;
 import com.healgym.util.Js;
 import com.healgym.util.Json;
+import com.healgym.validation.TrainingProfile;
 import com.healgym.web.ApiException;
+import com.healgym.web.CastException;
+import com.mongodb.ErrorCategory;
+import com.mongodb.MongoWriteException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -43,17 +54,65 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/workouts")
 public class WorkoutController extends BaseController {
 
-  private static final Pattern EXERCICIO_ID = Pattern.compile("^[a-z0-9-]{1,90}$");
+  private static final Pattern EXERCICIO_ID = Pattern.compile("^[a-z0-9_-]{1,90}$");
+
+  /** O catálogo usa hífen e sublinhado, como em agachamento com barra. */
+  static boolean exercicioIdValido(String id) {
+    return id != null && EXERCICIO_ID.matcher(id).matches();
+  }
   private static final Pattern UID = Pattern.compile("^[a-zA-Z0-9-]{1,40}$");
+  private static final Pattern CHAVE = Pattern.compile("^[a-zA-Z0-9-]{8,64}$");
 
   private final AuthService auth;
   private final WorkoutRepository workouts;
   private final ExecutionRepository execucoes;
+  private final RotinaServico rotinas;
 
-  public WorkoutController(AuthService auth, WorkoutRepository workouts, ExecutionRepository execucoes) {
+  public WorkoutController(
+      AuthService auth,
+      WorkoutRepository workouts,
+      ExecutionRepository execucoes,
+      RotinaRepository rotinaRepositorio) {
     this.auth = auth;
     this.workouts = workouts;
     this.execucoes = execucoes;
+    this.rotinas = new RotinaServico(rotinaRepositorio);
+  }
+
+  private static boolean motorNovo(Document workout) {
+    return workout.get("motorVersao") instanceof Number
+        && ((Number) workout.get("motorVersao")).intValue() >= MotorRotina.VERSAO;
+  }
+
+  private static String focoDe(Document workout) {
+    Object foco = workout.get("focoSessao");
+    return foco instanceof String ? (String) foco : "FULL_BODY";
+  }
+
+  private static int numero(Object valor) {
+    return valor instanceof Number ? ((Number) valor).intValue() : 0;
+  }
+
+  /** Treinos da rotina usam o perfil da criação; avulsos, o perfil atual. */
+  private PerfilInterpretado perfilDoTreino(User user, Document workout) {
+    Object rotinaId = workout.get("rotinaId");
+    return rotinaId instanceof ObjectId
+        ? rotinas.perfilDaRotina(user, (ObjectId) rotinaId)
+        : rotinas.perfilAtual(user);
+  }
+
+  private List<Map<String, Object>> opcoesMotorNovo(
+      User user, Document workout, List<Map<String, Object>> itens, Map<String, Object> atual) {
+    try {
+      return MotorRotina.opcoesDeTroca(
+          itens,
+          numero(atual.get("posicao")),
+          focoDe(workout),
+          perfilDoTreino(user, workout),
+          (int) tempoDe(workout));
+    } catch (MotorRotina.Invalido e) {
+      throw message(404, "Exercício não encontrado neste treino");
+    }
   }
 
   private ApiException message(int status, String message) {
@@ -88,7 +147,12 @@ public class WorkoutController extends BaseController {
   }
 
   private Document treinoDoUsuario(String id, User user) {
-    Document workout = workouts.findOwned(id, user.getId());
+    Document workout;
+    try {
+      workout = workouts.findOwned(id, user.getId());
+    } catch (CastException e) {
+      workout = null;
+    }
     if (workout == null) {
       throw message(404, "Treino não encontrado");
     }
@@ -106,6 +170,9 @@ public class WorkoutController extends BaseController {
 
     try {
       Map<String, Object> body = body(request);
+      if (body.containsKey("foco")) {
+        return gerarAvulso(user, body);
+      }
       Object tempoBruto = body.get("tempoDisponivel");
 
       double tempoDisponivel = Js.toNumber(tempoBruto);
@@ -147,11 +214,12 @@ public class WorkoutController extends BaseController {
       }
 
       PrescricaoPerfil.Configuracao cfg = prescricao(user);
+      PreferenciasTreino preferencias = rotinas.perfilAtual(user).preferencias;
       WorkoutGenerator.Metadata metadata = WorkoutGenerator.gerarMetadados(grupamento, letraTreino);
       String modo = cfg.modo;
       WorkoutGenerator.Session session =
           WorkoutGenerator.montar(
-              grupamento, tempoDisponivel, cfg.rank, modo, seed(user), variante);
+              grupamento, tempoDisponivel, cfg.rank, modo, seed(user), variante, preferencias);
       String titulo =
           "FULL_BODY".equals(grupamento)
               ? metadata.titulo + " — Sessão " + (variante + 1)
@@ -194,11 +262,60 @@ public class WorkoutController extends BaseController {
     }
   }
 
+  /**
+   * Treino avulso com o motor novo. A chave opcional, gerada pelo cliente a cada envio do
+   * formulário, torna o pedido idempotente: repetir o envio devolve o mesmo treino.
+   */
+  private ResponseEntity<Object> gerarAvulso(User user, Map<String, Object> body) {
+    Object foco = body.get("foco");
+    if (!(foco instanceof String) || !RotinaServico.FOCOS_AVULSO.contains(foco)) {
+      throw message(400, "Escolha um foco para o treino");
+    }
+    Integer minutos = TrainingProfile.inteiro(body.get("tempoDisponivel"));
+    if (minutos == null || minutos < 30 || minutos > 120) {
+      throw message(400, "Tempo disponível deve estar entre 30 e 120 minutos");
+    }
+    Object chave = body.get("chave");
+    if (chave != null && (!(chave instanceof String) || !CHAVE.matcher((String) chave).matches())) {
+      throw message(400, "Identificador da requisição inválido");
+    }
+    if (chave != null) {
+      Document existente = workouts.findByChaveIdempotencia(user.getId(), (String) chave);
+      if (existente != null) {
+        return ok(Json.obj("success", true, "data", existente));
+      }
+    }
+    int anteriores = 0;
+    for (Document anterior : workouts.findByUser(user.getId(), 200)) {
+      if ("AVULSO".equals(anterior.get("tipoDivisao")) && foco.equals(anterior.get("avulsoFoco"))) {
+        anteriores++;
+      }
+    }
+    Document workout = rotinas.treinoAvulso(user, (String) foco, minutos, anteriores, new Date());
+    if (chave != null) {
+      workout.append("chaveIdempotencia", chave);
+    }
+    try {
+      workouts.insert(workout);
+    } catch (MongoWriteException e) {
+      if (chave != null && e.getError().getCategory() == ErrorCategory.DUPLICATE_KEY) {
+        Document existente = workouts.findByChaveIdempotencia(user.getId(), (String) chave);
+        if (existente != null) {
+          return ok(Json.obj("success", true, "data", existente));
+        }
+      }
+      throw e;
+    }
+    return json(201, Json.obj("success", true, "data", workout));
+  }
+
   @GetMapping("/programa")
   public ResponseEntity<Object> programa(HttpServletRequest request) {
     User user = auth.authenticate(request);
     try {
-      ProgramaSemanal.Programa programa = ProgramaSemanal.planejar(user.getProfile(), seed(user), null);
+      ProgramaSemanal.Programa programa =
+          ProgramaSemanal.planejar(
+              user.getProfile(), seed(user), null, rotinas.perfilAtual(user).preferencias);
       return ok(Json.obj("success", true, "data", respostaPrograma(user, programa, false)));
     } catch (ApiException e) {
       throw e;
@@ -223,7 +340,8 @@ public class WorkoutController extends BaseController {
       }
       boolean atualizar = Boolean.TRUE.equals(body.get("atualizar"));
       ProgramaSemanal.Programa programa =
-          ProgramaSemanal.planejar(user.getProfile(), seed(user), minutos);
+          ProgramaSemanal.planejar(
+              user.getProfile(), seed(user), minutos, rotinas.perfilAtual(user).preferencias);
       Map<String, Document> salvas = programasSalvos(user, programa.chave);
       Map<String, Boolean> estado = new LinkedHashMap<>();
       for (Map.Entry<String, Document> entrada : salvas.entrySet()) {
@@ -388,6 +506,7 @@ public class WorkoutController extends BaseController {
     try {
       if (periodoAusente(de) && periodoAusente(ate)) {
         List<Document> found = workouts.findByUser(user.getId(), 50);
+        anotarEstado(user, found);
 
         return ok(
             Json.obj("success", true, "count", found.size(), "data", new ArrayList<Object>(found)));
@@ -433,6 +552,30 @@ public class WorkoutController extends BaseController {
     return valor == null || valor.isBlank();
   }
 
+  /** Acrescenta à resposta (sem gravar) se cada treino não foi iniciado, está em andamento ou foi concluído. */
+  private void anotarEstado(User user, List<Document> treinos) {
+    List<ObjectId> abertos = new ArrayList<>();
+    for (Document treino : treinos) {
+      if (!Boolean.TRUE.equals(treino.get("realizado"))) {
+        abertos.add(treino.getObjectId("_id"));
+      }
+    }
+    Map<ObjectId, Document> porTreino = execucoes.porTreinos(user.getId(), abertos);
+    for (Document treino : treinos) {
+      if (Boolean.TRUE.equals(treino.get("realizado"))) {
+        treino.put("estadoExecucao", "concluido");
+        continue;
+      }
+      Document execucao = porTreino.get(treino.getObjectId("_id"));
+      boolean iniciada = ExecucaoRegras.iniciada(execucao);
+      treino.put("estadoExecucao", iniciada ? "em_andamento" : "nao_iniciado");
+      if (iniciada) {
+        treino.put("seriesConcluidas", ExecucaoRegras.seriesConcluidasNaSessao(execucao));
+      }
+    }
+    rotinas.anotarLista(user, treinos);
+  }
+
   @GetMapping("/progresso")
   public ResponseEntity<Object> progresso(
       @RequestParam(value = "exercicios", required = false) String exercicios,
@@ -456,6 +599,13 @@ public class WorkoutController extends BaseController {
         ignorar = new ObjectId(excluir);
       }
       List<Document> recentes = execucoes.recentes(user.getId(), ignorar, 60);
+      Map<String, Map<String, Object>> prescricoes = new LinkedHashMap<>();
+      Document atual = ignorar == null ? null : workouts.findOwned(excluir, user.getId());
+      if (atual != null) {
+        for (Map<String, Object> item : itens(atual)) {
+          prescricoes.putIfAbsent(String.valueOf(item.get("exercicioId")), item);
+        }
+      }
       Map<String, Object> dados = new LinkedHashMap<>();
       for (String id : ids) {
         String limpo = id.trim();
@@ -463,9 +613,23 @@ public class WorkoutController extends BaseController {
           throw message(400, "Exercício inválido");
         }
         ExerciseDatabase.Exercise exercicio = ExerciseDatabase.porId(limpo);
-        dados.put(
-            limpo,
-            ExecucaoRegras.progresso(limpo, exercicio == null ? null : exercicio.nome, recentes, 5));
+        Map<String, Object> progresso =
+            ExecucaoRegras.progresso(limpo, exercicio == null ? null : exercicio.nome, recentes, 5);
+        Map<String, Object> prescrito = prescricoes.get(limpo);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> sessoes = (List<Map<String, Object>>) progresso.get("sessoes");
+        Map<String, Object> recomendacao =
+            ProgressaoCarga.recomendar(
+                sessoes,
+                prescrito == null ? null : prescrito.get("repeticoes"),
+                prescrito == null ? null : prescrito.get("series"),
+                prescrito != null
+                    ? prescrito.get("tipoCarga")
+                    : exercicio == null ? null : exercicio.tipoCarga);
+        if (recomendacao != null) {
+          progresso.put("recomendacao", recomendacao);
+        }
+        dados.put(limpo, progresso);
       }
       return ok(Json.obj("success", true, "data", dados));
     } catch (ApiException e) {
@@ -485,6 +649,7 @@ public class WorkoutController extends BaseController {
 
     try {
       Document workout = treinoDoUsuario(id, user);
+      rotinas.anotarSequencia(user, workout);
       return ok(Json.obj("success", true, "data", workout));
     } catch (ApiException e) {
       throw e;
@@ -519,6 +684,7 @@ public class WorkoutController extends BaseController {
       if (Boolean.TRUE.equals(workout.get("realizado"))) {
         throw message(409, "Este treino já foi concluído e não aceita novos registros");
       }
+      rotinas.reservarExecucao(user, workout);
       Map<String, Object> body = body(request);
       Date agora = new Date();
       ObjectId workoutId = workout.getObjectId("_id");
@@ -593,6 +759,7 @@ public class WorkoutController extends BaseController {
       if (Boolean.TRUE.equals(workout.get("realizado"))) {
         throw message(409, "Este treino já foi concluído");
       }
+      rotinas.reservarExecucao(user, workout);
       Map<String, Object> body = body(request);
       Object acao = body.get("acao");
       if (!(acao instanceof String)) {
@@ -680,8 +847,10 @@ public class WorkoutController extends BaseController {
     try {
       Document workout = treinoDoUsuario(id, user);
       if (Boolean.TRUE.equals(workout.get("realizado"))) {
+        rotinas.liberarExecucao(user, workout);
         return ok(Json.obj("success", true, "data", workout));
       }
+      rotinas.reservarExecucao(user, workout);
       Integer duracao;
       try {
         duracao =
@@ -705,7 +874,9 @@ public class WorkoutController extends BaseController {
         workout.put("duracaoRealSegundos", duracao);
       }
       workout.put("updatedAt", now);
+      workout.remove("sequenciaAberta");
       workouts.replace(workout);
+      rotinas.liberarExecucao(user, workout);
 
       return ok(Json.obj("success", true, "data", workout));
     } catch (ApiException e) {
@@ -751,14 +922,15 @@ public class WorkoutController extends BaseController {
         throw message(404, "Exercício não encontrado neste treino");
       }
       completarPadrao(atual);
-      PrescricaoPerfil.Configuracao cfg = prescricao(user);
-      List<Map<String, Object>> opcoes =
-          SessionPlanner.alternativas(
-              atual,
-              itens,
-              tempoDe(workout),
-              cfg.rank,
-              cfg.modo);
+      List<Map<String, Object>> opcoes;
+      if (motorNovo(workout)) {
+        opcoes = opcoesMotorNovo(user, workout, itens, atual);
+      } else {
+        PrescricaoPerfil.Configuracao cfg = prescricao(user);
+        opcoes =
+            SessionPlanner.alternativas(
+                atual, itens, tempoDe(workout), cfg.rank, cfg.modo, rotinas.perfilAtual(user).preferencias);
+      }
       boolean executado =
           ExecucaoRegras.temSerieConcluida(execucoes.find(user.getId(), workout.getObjectId("_id")), uid);
       return ok(Json.obj("success", true, "data", opcoes, "temSeriesConcluidas", executado));
@@ -783,6 +955,7 @@ public class WorkoutController extends BaseController {
       if (Boolean.TRUE.equals(workout.get("realizado"))) {
         throw message(409, "Não é possível trocar exercícios de um treino concluído");
       }
+      rotinas.reservarExecucao(user, workout);
       Map<String, Object> body = body(request);
       Object novoId = body.get("exercicioId");
       if (!(novoId instanceof String) || !EXERCICIO_ID.matcher((String) novoId).matches()) {
@@ -805,12 +978,16 @@ public class WorkoutController extends BaseController {
                 "requerConfirmacao",
                 true));
       }
+      boolean novoMotor = motorNovo(workout);
       PrescricaoPerfil.Configuracao cfg = prescricao(user);
-      int experiencia = cfg.rank;
-      String modo = cfg.modo;
       double tempo = tempoDe(workout);
+      List<Map<String, Object>> opcoes =
+          novoMotor
+              ? opcoesMotorNovo(user, workout, itens, atual)
+              : SessionPlanner.alternativas(
+                  atual, itens, tempo, cfg.rank, cfg.modo, rotinas.perfilAtual(user).preferencias);
       Map<String, Object> escolhida = null;
-      for (Map<String, Object> opcao : SessionPlanner.alternativas(atual, itens, tempo, experiencia, modo)) {
+      for (Map<String, Object> opcao : opcoes) {
         if (novoId.equals(opcao.get("exercicioId"))) {
           escolhida = opcao;
         }
@@ -819,8 +996,19 @@ public class WorkoutController extends BaseController {
       if (escolhida == null || exercicio == null) {
         throw message(400, "Exercício substituto não é equivalente a este");
       }
-      Map<String, Object> novo = SessionPlanner.substituto(atual, exercicio, experiencia, modo);
-      novo.put("series", escolhida.get("series"));
+      Map<String, Object> novo;
+      if (novoMotor) {
+        novo =
+            MotorRotina.prescreverTroca(
+                atual, exercicio, numero(escolhida.get("series")), perfilDoTreino(user, workout));
+        novo.put("uid", new ObjectId().toHexString());
+        if (atual.get("rotinaUid") != null) {
+          novo.put("rotinaUid", atual.get("rotinaUid"));
+        }
+      } else {
+        novo = SessionPlanner.substituto(atual, exercicio, cfg.rank, cfg.modo);
+        novo.put("series", escolhida.get("series"));
+      }
       List<Object> atualizados = new ArrayList<>();
       for (Map<String, Object> item : itens) {
         atualizados.add(item == atual ? novo : item);
@@ -843,11 +1031,18 @@ public class WorkoutController extends BaseController {
               .append("nomeNovo", novo.get("nome"))
               .append("data", now));
       String grupamento = String.valueOf(workout.get("grupamento"));
+      if (novoMotor) {
+        AquecimentoSessao.aplicar(comoMapa, (int) tempo, perfilDoTreino(user, workout));
+      } else {
+        SessionPlanner.marcarAquecimentoInicial(comoMapa);
+      }
       workout.put("exercicios", atualizados);
       workout.put("substituicoes", historico);
-      workout.put(
-          "duracaoEstimadaMinutos",
-          Math.max(1, (int) Math.round(WorkoutGenerator.estimarSegundos(comoMapa, tempo) / 60.0)));
+      double segundos =
+          novoMotor
+              ? SessionPlanner.segundosTotais(comoMapa, (int) tempo)
+              : WorkoutGenerator.estimarSegundos(comoMapa, tempo);
+      workout.put("duracaoEstimadaMinutos", Math.max(1, (int) Math.round(segundos / 60.0)));
       workout.put("cobertura", CoberturaMuscular.calcular(grupamento, comoMapa));
       workout.put("resumo", CoberturaMuscular.resumo(grupamento, comoMapa));
       workout.put("updatedAt", now);
@@ -896,6 +1091,9 @@ public class WorkoutController extends BaseController {
 
     try {
       Document workout = treinoDoUsuario(id, user);
+      if (!rotinas.podeExcluir(user, workout)) {
+        throw message(409, "Este treino faz parte da programação e precisa permanecer no histórico.");
+      }
 
       workouts.deleteDocument(workout.getObjectId("_id"));
       execucoes.deleteByWorkout(user.getId(), workout.getObjectId("_id"));

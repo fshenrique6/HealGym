@@ -1,16 +1,14 @@
 import styled from 'styled-components';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import {
   FiLogOut,
   FiUser,
-  FiActivity,
   FiHeart,
   FiTarget,
   FiCheck,
   FiX,
-  FiClock,
   FiEdit2,
 } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,22 +20,26 @@ import {
   calculateBasalMetabolicRate,
   calculateBodyMassIndex,
 } from '../utils/healthCalculations';
-import { cronogramaSemanal } from '../utils/cronogramaSemanal';
+import { avisoBloqueio, estadoDaSessao, sessoesDaRotina, visaoSemanal } from '../utils/rotina';
+import { estadoOrigem, montarConsulta } from '../utils/navegacaoTreino';
+import SequenciaRotina from './treino/SequenciaRotina';
 import { formatarData } from '../utils/medidasCorporais';
 import IndicadorAjuda from './IndicadorAjuda';
 import CalendarioTreinos from './CalendarioTreinos';
 import MedidasCorporais from './MedidasCorporais';
-import PerfilTreinoCard from './PerfilTreinoCard';
 import { LuRuler } from 'react-icons/lu';
+
+const CHAVE_ROLAGEM = 'healgym-rolagem-dashboard';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const reduzir = useReducedMotion();
+  const painelRef = useRef(null);
   const [editingField, setEditingField] = useState(null);
-  const [treinosRealizados, setTreinosRealizados] = useState([]);
-  const [modalHistorico, setModalHistorico] = useState(false);
-  const [treinosDoDia, setTreinosDoDia] = useState([]);
-  const [diaSelecionado, setDiaSelecionado] = useState(null);
+  const [agenda, setAgenda] = useState({ rotina: null, estado: null, treinos: [] });
+  const [agendaPronta, setAgendaPronta] = useState(false);
+  const [agendaErro, setAgendaErro] = useState(false);
   const [calendarioAberto, setCalendarioAberto] = useState(false);
   const [medidasAberto, setMedidasAberto] = useState(false);
   const [resumoMedidas, setResumoMedidas] = useState(null);
@@ -62,64 +64,85 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    carregarTreinosRealizados();
-  }, []);
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && modalHistorico) {
-        setModalHistorico(false);
+    let ativo = true;
+    const carregarAgenda = async () => {
+      try {
+        const [rotinaRes, treinosRes] = await Promise.all([api.getRotina(), api.getMyWorkouts()]);
+        if (!ativo) return;
+        const dados = rotinaRes?.success ? rotinaRes.data : null;
+        setAgenda({
+          rotina: dados?.rotina || null,
+          estado: dados?.estado || null,
+          treinos: Array.isArray(treinosRes?.data) ? treinosRes.data : [],
+        });
+        setAgendaErro(false);
+      } catch {
+        if (!ativo) return;
+        setAgendaErro(true);
+      } finally {
+        if (ativo) setAgendaPronta(true);
       }
     };
+    carregarAgenda();
+    const aoVoltar = () => {
+      if (document.visibilityState === 'visible') carregarAgenda();
+    };
+    window.addEventListener('focus', carregarAgenda);
+    document.addEventListener('visibilitychange', aoVoltar);
+    return () => {
+      ativo = false;
+      window.removeEventListener('focus', carregarAgenda);
+      document.removeEventListener('visibilitychange', aoVoltar);
+    };
+  }, []);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [modalHistorico]);
+  useLayoutEffect(() => {
+    const bruto = sessionStorage.getItem(CHAVE_ROLAGEM);
+    if (bruto == null || !painelRef.current) return;
+    sessionStorage.removeItem(CHAVE_ROLAGEM);
+    const topo = Number(bruto);
+    if (Number.isFinite(topo) && topo >= 0) painelRef.current.scrollTop = topo;
+  }, []);
 
-  const carregarTreinosRealizados = async () => {
-    try {
-      const response = await api.getMyWorkouts();
-      if (response.success) {
-        const realizados = response.data.filter((treino) => treino.realizado);
-        setTreinosRealizados(realizados);
-      }
-    } catch {}
+  const visao = useMemo(() => (agendaPronta ? visaoSemanal(agenda) : null), [agenda, agendaPronta]);
+  const treinosNaFaixa =
+    visao?.modo === 'flexivel' ? visao.passos.filter((passo) => passo.tipo === 'sessao').length : 0;
+
+  const guardarRolagem = () => {
+    if (painelRef.current) sessionStorage.setItem(CHAVE_ROLAGEM, String(painelRef.current.scrollTop));
   };
 
-  const isTreinoRealizado = (dayOfWeek) => {
-    const today = new Date();
-    const currentWeekStart = new Date(today.setDate(today.getDate() - today.getDay() + 1));
-    const targetDate = new Date(currentWeekStart);
-    targetDate.setDate(currentWeekStart.getDate() + (dayOfWeek - 1));
-
-    return treinosRealizados.some((treino) => {
-      const treinoDate = new Date(treino.dataRealizacao || treino.createdAt);
-      return treinoDate.toDateString() === targetDate.toDateString();
-    });
+  const irParaFicha = (id) => {
+    if (!id) return;
+    guardarRolagem();
+    navigate(`/treino/${id}`, { state: estadoOrigem('dashboard') });
   };
 
-  const handleDiaClick = (dayOfWeek, diaNome) => {
-    const today = new Date();
-    const currentWeekStart = new Date(today.setDate(today.getDate() - today.getDay() + 1));
-    const targetDate = new Date(currentWeekStart);
-    targetDate.setDate(currentWeekStart.getDate() + (dayOfWeek - 1));
-
-    const treinosDesseDia = treinosRealizados.filter((treino) => {
-      const treinoDate = new Date(treino.dataRealizacao || treino.createdAt);
-      return treinoDate.toDateString() === targetDate.toDateString();
-    });
-
-    if (treinosDesseDia.length > 0) {
-      setTreinosDoDia(treinosDesseDia);
-      setDiaSelecionado(diaNome);
-      setModalHistorico(true);
+  const abrirCartao = (cartao) => {
+    if (!cartao || cartao.clicavel === false) return;
+    if (cartao.treinoId) {
+      irParaFicha(cartao.treinoId);
+      return;
     }
+    const sessao = sessoesDaRotina(agenda.rotina).find((item) => item.codigo === cartao.codigo);
+    if (!sessao) return;
+    const situacao = estadoDaSessao(agenda.estado, sessao.codigo);
+    const liberada = agenda.estado?.proxima === sessao.codigo && situacao?.status !== 'concluida';
+    const consulta = montarConsulta(sessao, {
+      liberada,
+      bloqueio: liberada ? '' : avisoBloqueio(agenda.rotina, agenda.estado),
+    });
+    if (!consulta) return;
+    guardarRolagem();
+    navigate('/treino/consulta', { state: { ...estadoOrigem('dashboard'), consulta } });
   };
 
-  const getDiaAtual = () => {
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    return dayOfWeek === 0 ? 7 : dayOfWeek;
+  const aoTeclarCartao = (evento, cartao) => {
+    if (!cartao?.clicavel) return;
+    if (evento.key === 'Enter' || evento.key === ' ') {
+      evento.preventDefault();
+      abrirCartao(cartao);
+    }
   };
 
   const handleLogout = () => {
@@ -132,13 +155,6 @@ const Dashboard = () => {
   };
 
   const handleTreinoClick = () => {
-    const diaAtual = getDiaAtual();
-
-    if (diaAtual === 7) {
-      alert('Domingo é dia de descanso! Volte amanhã para treinar.');
-      return;
-    }
-
     navigate('/treino');
   };
 
@@ -157,62 +173,9 @@ const Dashboard = () => {
 
   return (
     <>
-      <AnimatePresence>
-        {modalHistorico && (
-          <ModalOverlay
-            as={motion.div}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setModalHistorico(false)}
-          >
-            <ModalContainer
-              as={motion.div}
-              initial={{ opacity: 0, scale: 0.9, y: -50 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: -50 }}
-              transition={{ type: 'spring', duration: 0.5 }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <ModalHeader>
-                <ModalTitulo>Treinos de {diaSelecionado}</ModalTitulo>
-                <CloseButton onClick={() => setModalHistorico(false)}>
-                  <FiX />
-                </CloseButton>
-              </ModalHeader>
-              <ModalBody>
-                {treinosDoDia.map((treino, index) => (
-                  <TreinoCard key={treino._id || index}>
-                    <TreinoCardHeader>
-                      <TreinoCardTitulo>{treino.titulo}</TreinoCardTitulo>
-                      <TreinoCardData>
-                        {new Date(treino.dataRealizacao).toLocaleTimeString('pt-BR', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </TreinoCardData>
-                    </TreinoCardHeader>
-                    <TreinoCardInfo>
-                      <TreinoCardDetalhe>
-                        <FiClock />
-                        {treino.tempoDisponivel} min
-                      </TreinoCardDetalhe>
-                      <TreinoCardDetalhe>
-                        <FiActivity />
-                        {treino.exercicios.length} exercícios
-                      </TreinoCardDetalhe>
-                    </TreinoCardInfo>
-                    <TreinoCardObjetivo>{treino.objetivo}</TreinoCardObjetivo>
-                  </TreinoCard>
-                ))}
-              </ModalBody>
-            </ModalContainer>
-          </ModalOverlay>
-        )}
-      </AnimatePresence>
-
       <CalendarioTreinos
         aberto={calendarioAberto}
+        onAbrirTreino={irParaFicha}
         onFechar={() => {
           setCalendarioAberto(false);
           botaoCalendarioRef.current?.blur();
@@ -234,7 +197,7 @@ const Dashboard = () => {
         />
       )}
 
-      <Container className="custom-scroll">
+      <Container ref={painelRef} className="custom-scroll">
         <Header>
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -380,7 +343,6 @@ const Dashboard = () => {
                       setEditingField={setEditingField}
                     />
                   </InfoGrid>
-                  <PerfilTreinoCard />
                   <MedidasActionRow>
                     <MedidasAction
                       ref={botaoMedidasRef}
@@ -449,70 +411,89 @@ const Dashboard = () => {
                 transition={{ duration: 0.8, delay: 0.6 }}
               >
                 <WeeklyCalendar>
-                  <CalendarTitle>Cronograma Semanal</CalendarTitle>
-                  <CalendarSubtitle>
-                  Sua programação de treinos é personalizada e pode ser adaptada à sua rotina.
-                  </CalendarSubtitle>
-                  <CalendarActionRow>
-                    <CalendarAction
-                      ref={botaoCalendarioRef}
-                      type="button"
-                      aria-haspopup="dialog"
-                      aria-expanded={calendarioAberto}
-                      aria-controls="calendario-treinos"
-                      onClick={() => setCalendarioAberto(true)}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
-                    >
-                      Ver calendário completo
-                    </CalendarAction>
-                  </CalendarActionRow>
-                  <CalendarGrid>
-                    {cronogramaSemanal.map((diaInfo, index) => {
-                      const isToday = getDiaAtual() === diaInfo.dayOfWeek;
-                      const isCompleted = isTreinoRealizado(diaInfo.dayOfWeek);
-
-                      return (
+                  <CabecalhoRotina>
+                    <div>
+                      <CalendarTitle>
+                        {visao?.modo === 'calendario' ? 'Cronograma Semanal' : 'Sua rotina'}
+                      </CalendarTitle>
+                      <CalendarSubtitle>
+                        {agendaErro && visao?.modo !== 'calendario' && visao?.modo !== 'flexivel'
+                          ? 'Não foi possível carregar a programação'
+                          : visao?.modo === 'calendario'
+                            ? 'Dias definidos'
+                            : visao?.modo === 'flexivel'
+                              ? `Rotina flexível · ${treinosNaFaixa} ${treinosNaFaixa === 1 ? 'treino' : 'treinos'}`
+                              : agendaPronta
+                                ? 'Nenhuma programação salva'
+                                : 'Carregando a programação'}
+                      </CalendarSubtitle>
+                    </div>
+                    <AcoesRotina>
+                      {visao?.modo === 'vazio' && (
+                        <CalendarAction
+                          type="button"
+                          onClick={handleTreinoClick}
+                          whileHover={reduzir ? undefined : { scale: 1.02 }}
+                          whileTap={reduzir ? undefined : { scale: 0.98 }}
+                        >
+                          Criar programação
+                        </CalendarAction>
+                      )}
+                      <CalendarAction
+                        ref={botaoCalendarioRef}
+                        type="button"
+                        aria-haspopup="dialog"
+                        aria-expanded={calendarioAberto}
+                        aria-controls="calendario-treinos"
+                        onClick={() => setCalendarioAberto(true)}
+                        whileHover={reduzir ? undefined : { scale: 1.02 }}
+                        whileTap={reduzir ? undefined : { scale: 0.98 }}
+                      >
+                        Ver calendário completo
+                      </CalendarAction>
+                    </AcoesRotina>
+                  </CabecalhoRotina>
+                  {visao?.modo === 'flexivel' && visao.passos?.length > 0 && (
+                    <SequenciaRotina passos={visao.passos} onAbrir={abrirCartao} />
+                  )}
+                  {visao?.modo === 'calendario' && (
+                    <CalendarGrid>
+                      {visao.dias.map((dia, index) => (
                         <CalendarDay
-                          key={index}
-                          isToday={isToday}
-                          isCompleted={isCompleted}
-                          isClickable={isCompleted}
-                          onClick={() =>
-                            isCompleted && handleDiaClick(diaInfo.dayOfWeek, diaInfo.dia)
-                          }
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
+                          key={dia.dia}
+                          $hoje={dia.hoje}
+                          $descanso={dia.status === 'descanso'}
+                          $andamento={dia.status === 'em_andamento'}
+                          $proxima={dia.proxima}
+                          $clicavel={dia.clicavel}
+                          role={dia.clicavel ? 'button' : undefined}
+                          tabIndex={dia.clicavel ? 0 : undefined}
+                          aria-current={dia.hoje ? 'date' : undefined}
+                          onClick={() => abrirCartao(dia)}
+                          onKeyDown={(evento) => aoTeclarCartao(evento, dia)}
+                          initial={reduzir ? false : { opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: reduzir ? 0 : 0.22, delay: reduzir ? 0 : index * 0.03, ease: [0.22, 1, 0.36, 1] }}
+                          whileHover={reduzir ? undefined : { scale: 1.02 }}
+                          whileTap={dia.clicavel && !reduzir ? { scale: 0.98 } : undefined}
                         >
                           <DayHeader>
-                            <DayName>{diaInfo.dia}</DayName>
-                            {isCompleted && (
-                              <CompletedIcon>
-                                <FiCheck />
-                              </CompletedIcon>
-                            )}
+                            <DayName>{dia.rotulo}</DayName>
+                            {dia.hoje && <TodayIndicator>HOJE</TodayIndicator>}
                           </DayHeader>
                           <WorkoutInfo>
-                            <WorkoutName>{diaInfo.treino}</WorkoutName>
-                            <MuscleGroup>{diaInfo.grupos}</MuscleGroup>
+                            {dia.titulo && (
+                              <WorkoutName $quieto={dia.status === 'descanso'}>
+                                {dia.status === 'concluida' && <FiCheck aria-hidden="true" />}
+                                {dia.titulo}
+                              </WorkoutName>
+                            )}
+                            {dia.detalhe && <MuscleGroup>{dia.detalhe}</MuscleGroup>}
                           </WorkoutInfo>
-                          {isToday && <TodayIndicator>HOJE</TodayIndicator>}
-                          {isCompleted && <ClickHint>Clique para ver</ClickHint>}
                         </CalendarDay>
-                      );
-                    })}
-
-                    <CalendarDay isRest={true}>
-                      <DayHeader>
-                        <DayName>Domingo</DayName>
-                      </DayHeader>
-                      <WorkoutInfo>
-                        <WorkoutName>Descanso</WorkoutName>
-                        <MuscleGroup>Recuperação</MuscleGroup>
-                      </WorkoutInfo>
-                      {getDiaAtual() === 7 && <TodayIndicator>HOJE</TodayIndicator>}
-                    </CalendarDay>
-                  </CalendarGrid>
+                      ))}
+                    </CalendarGrid>
+                  )}
                 </WeeklyCalendar>
               </motion.div>
             </motion.div>
@@ -1170,14 +1151,34 @@ const WeeklyCalendar = styled.div`
   margin-top: 1.5rem;
 `;
 
+const CabecalhoRotina = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 0.85rem;
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+  }
+`;
+
+const AcoesRotina = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-shrink: 0;
+`;
+
 const CalendarTitle = styled.h2`
   color: var(--white);
   font-size: 1.5rem;
   line-height: 1.15;
   letter-spacing: 0.08em;
   font-weight: 600;
-  margin-bottom: 8px;
-  text-align: center;
+  margin: 0;
+  text-align: left;
   background: var(--gold-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -1190,16 +1191,9 @@ const CalendarSubtitle = styled.p`
   font-size: 0.95rem;
   letter-spacing: 0.04em;
   line-height: 1.3;
-  margin: 0 auto 20px auto;
-  max-width: 640px;
-  text-align: center;
+  margin: 0.35rem 0 0;
+  text-align: left;
   cursor: default;
-`;
-
-const CalendarActionRow = styled.div`
-  display: flex;
-  justify-content: center;
-  margin: 0 0 1.25rem;
 `;
 
 const CalendarAction = styled(motion.button)`
@@ -1231,47 +1225,49 @@ const CalendarAction = styled(motion.button)`
 
 const CalendarGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.75rem;
 
   @media (max-width: 1200px) {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   @media (max-width: 768px) {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 `;
 
 const CalendarDay = styled(motion.div)`
   background: ${(props) => {
-    if (props.isRest) return 'rgba(100, 100, 100, 0.1)';
-    if (props.isCompleted) return 'rgba(76, 175, 80, 0.15)';
-    if (props.isToday) return 'rgba(198, 169, 100, 0.15)';
+    if (props.$hoje) return 'rgba(198, 169, 100, 0.12)';
+    if (props.$descanso) return 'rgba(255, 255, 255, 0.03)';
     return 'rgba(255, 255, 255, 0.05)';
   }};
   border: 1px solid
     ${(props) => {
-      if (props.isRest) return 'rgba(100, 100, 100, 0.3)';
-      if (props.isCompleted) return 'rgba(76, 175, 80, 0.6)';
-      if (props.isToday) return 'var(--accent)';
+      if (props.$hoje || props.$andamento || props.$proxima) return 'var(--accent)';
+      if (props.$descanso) return 'rgba(255, 255, 255, 0.08)';
       return 'rgba(198, 169, 100, 0.2)';
     }};
   border-radius: 8px;
-  padding: 0.75rem;
-  text-align: center;
-  cursor: ${(props) => (props.isClickable ? 'pointer' : 'default')};
-  transition: all 0.3s ease;
+  padding: 0.65rem 0.7rem;
+  text-align: left;
+  cursor: ${(props) => (props.$clicavel ? 'pointer' : 'default')};
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
   position: relative;
-  min-height: 100px;
+  min-height: 92px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  outline: none;
 
   &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px
-      ${(props) => (props.isCompleted ? 'rgba(76, 175, 80, 0.4)' : 'rgba(198, 169, 100, 0.2)')};
+    box-shadow: 0 4px 15px rgba(198, 169, 100, 0.2);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 `;
 
@@ -1284,23 +1280,10 @@ const DayHeader = styled.div`
 
 const DayName = styled.div`
   color: var(--white);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   font-weight: 600;
-`;
-
-const CompletedIcon = styled.div`
-  background: #4caf50;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-
-  svg {
-    color: white;
-    font-size: 0.8rem;
-  }
+  line-height: 1.2;
+  overflow-wrap: anywhere;
 `;
 
 const WorkoutInfo = styled.div`
@@ -1311,208 +1294,39 @@ const WorkoutInfo = styled.div`
 `;
 
 const WorkoutName = styled.div`
-  color: var(--accent);
-  font-size: 0.8rem;
+  color: ${({ $quieto }) => ($quieto ? 'var(--text-secondary)' : 'var(--accent)')};
+  font-size: 0.85rem;
   font-weight: 600;
+  line-height: 1.25;
   margin-bottom: 0.25rem;
-`;
-
-const MuscleGroup = styled.div`
-  color: var(--text-secondary);
-  font-size: 0.7rem;
-  line-height: 1.2;
-`;
-
-const TodayIndicator = styled.div`
-  background: var(--accent);
-  color: var(--background);
-  font-size: 0.6rem;
-  font-weight: 700;
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  position: absolute;
-  top: 0.25rem;
-  right: 0.25rem;
-  letter-spacing: 0.5px;
-`;
-
-const ClickHint = styled.div`
-  color: #4caf50;
-  font-size: 0.65rem;
-  font-weight: 600;
-  margin-top: 0.25rem;
-  opacity: 0.8;
-  cursor: pointer;
-`;
-
-
-const ModalOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
+  overflow-wrap: anywhere;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  padding: 1rem;
-  cursor: default;
-`;
-
-const ModalContainer = styled.div`
-  background: linear-gradient(135deg, rgba(26, 26, 26, 0.98) 0%, rgba(10, 10, 10, 0.98) 100%);
-  border: 2px solid var(--accent);
-  border-radius: 16px;
-  max-width: 700px;
-  width: 100%;
-  max-height: 80vh;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgba(198, 169, 100, 0.3);
-  cursor: default;
-  display: flex;
-  flex-direction: column;
-`;
-
-const ModalHeader = styled.div`
-  background: rgba(198, 169, 100, 0.1);
-  border-bottom: 1px solid var(--accent);
-  padding: 1.5rem 2rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: default;
-`;
-
-const ModalTitulo = styled.h2`
-  color: var(--white);
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin: 0;
-  background: var(--gold-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  cursor: default;
-`;
-
-const CloseButton = styled.button`
-  background: transparent;
-  border: none;
-  color: var(--accent);
-  cursor: pointer;
-  padding: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: all 0.3s ease;
-
-  svg {
-    font-size: 1.5rem;
-  }
-
-  &:hover {
-    background: rgba(198, 169, 100, 0.2);
-    transform: rotate(90deg);
-  }
-`;
-
-const ModalBody = styled.div`
-  padding: 2rem;
-  overflow-y: auto;
-  flex: 1;
-  cursor: default;
-
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: var(--accent);
-    border-radius: 4px;
-  }
-`;
-
-const TreinoCard = styled.div`
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(198, 169, 100, 0.2);
-  border-left: 4px solid #4caf50;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1rem;
-  transition: all 0.3s ease;
-  cursor: default;
-
-  &:hover {
-    background: rgba(255, 255, 255, 0.08);
-    transform: translateX(5px);
-  }
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-`;
-
-const TreinoCardHeader = styled.div`
-  display: flex;
-  justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 1rem;
-  cursor: default;
-`;
-
-const TreinoCardTitulo = styled.h3`
-  color: var(--white);
-  font-size: 1.3rem;
-  font-weight: 700;
-  margin: 0;
-  flex: 1;
-  cursor: default;
-`;
-
-const TreinoCardData = styled.div`
-  color: #4caf50;
-  font-size: 0.9rem;
-  font-weight: 600;
-  background: rgba(76, 175, 80, 0.1);
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  cursor: default;
-`;
-
-const TreinoCardInfo = styled.div`
-  display: flex;
-  gap: 1.5rem;
-  margin-bottom: 1rem;
-  cursor: default;
-`;
-
-const TreinoCardDetalhe = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  cursor: default;
+  gap: 0.3rem;
 
   svg {
+    flex-shrink: 0;
     color: var(--accent);
   }
 `;
 
-const TreinoCardObjetivo = styled.p`
+const MuscleGroup = styled.div`
   color: var(--text-secondary);
-  font-size: 0.95rem;
-  line-height: 1.5;
-  margin: 0;
-  cursor: default;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 `;
+
+const TodayIndicator = styled.div`
+  flex-shrink: 0;
+  background: var(--accent);
+  color: var(--background);
+  font-size: 0.58rem;
+  font-weight: 700;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+`;
+
 
 export default Dashboard;

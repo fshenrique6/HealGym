@@ -119,10 +119,11 @@ export const BotaoDiscreto = styled.button`
 
 export const TecnicaPainel = styled(motion.div)`
   overflow: hidden;
+  padding-top: 1rem;
 `;
 
 export const SalvamentoStatus = styled.div`
-  color: ${(props) => (props.erro ? '#ff6b6b' : 'var(--text-secondary)')};
+  color: ${(props) => (props.$erro ? '#ff6b6b' : 'var(--text-secondary)')};
   font-size: 0.82rem;
   margin-top: 0.75rem;
   min-height: 1.1rem;

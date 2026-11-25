@@ -65,6 +65,10 @@ public final class CoberturaMuscular {
         return Arrays.asList(PERNAS, PEITORAL, COSTAS, OMBROS, TRICEPS, BICEPS, CORE);
       case "SUPERIOR":
         return Arrays.asList(PEITORAL, COSTAS, OMBROS, TRICEPS, BICEPS);
+      case "EMPURRAR":
+        return Arrays.asList(PEITORAL, OMBROS, TRICEPS);
+      case "PUXAR":
+        return Arrays.asList(COSTAS, BICEPS, OMBROS);
       default:
         return Arrays.asList(PEITORAL, COSTAS, OMBROS, PERNAS, TRICEPS, BICEPS, CORE);
     }

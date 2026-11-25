@@ -146,10 +146,26 @@ public final class ProgramaSemanal {
   }
 
   public static Programa planejar(User.Profile profile, int seed, Integer minutosExplicitos) {
-    return planejar(PrescricaoPerfil.interpretar(profile), seed, minutosExplicitos);
+    return planejar(profile, seed, minutosExplicitos, null);
+  }
+
+  public static Programa planejar(
+      User.Profile profile,
+      int seed,
+      Integer minutosExplicitos,
+      com.healgym.service.rotina.PreferenciasTreino preferencias) {
+    return planejar(PrescricaoPerfil.interpretar(profile), seed, minutosExplicitos, preferencias);
   }
 
   public static Programa planejar(PrescricaoPerfil.Configuracao cfg, int seed, Integer minutosExplicitos) {
+    return planejar(cfg, seed, minutosExplicitos, null);
+  }
+
+  public static Programa planejar(
+      PrescricaoPerfil.Configuracao cfg,
+      int seed,
+      Integer minutosExplicitos,
+      com.healgym.service.rotina.PreferenciasTreino preferencias) {
     int dias = cfg.dias == null ? DIAS_PADRAO : cfg.dias;
     String origemDias = cfg.dias == null ? "padrao" : cfg.origemDias;
     int minutos = cfg.minutos == null ? MINUTOS_PADRAO : cfg.minutos;
@@ -164,7 +180,8 @@ public final class ProgramaSemanal {
     int ordem = 1;
     for (Modelo modelo : modelos) {
       WorkoutGenerator.Session gerada =
-          WorkoutGenerator.montar(modelo.grupamento, minutos, cfg.rank, cfg.modo, seed, modelo.variante);
+          WorkoutGenerator.montar(
+              modelo.grupamento, minutos, cfg.rank, cfg.modo, seed, modelo.variante, preferencias);
       List<String> grupos = new ArrayList<>();
       for (Map<String, Object> item : gerada.exercicios) {
         String bloco = String.valueOf(item.get("bloco"));
@@ -324,6 +341,7 @@ public final class ProgramaSemanal {
     }
     for (int i = 0; i < sessoes.size(); i++) {
       Sessao atual = sessoes.get(i);
+      SessionPlanner.marcarAquecimentoInicial(atual.exercicios);
       int segundos = SessionPlanner.segundosTotais(atual.exercicios, atual.minutos);
       List<String> problemas =
           SessionPlanner.validar(atual.grupamento, atual.exercicios, atual.minutos, rank);

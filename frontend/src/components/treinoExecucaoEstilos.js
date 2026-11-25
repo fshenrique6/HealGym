@@ -1,5 +1,8 @@
-import styled from 'styled-components';
 import { motion } from 'framer-motion';
+import styled from 'styled-components';
+import { CURVA } from './treino/movimento';
+
+const TOQUE = { duration: 0.18, ease: CURVA };
 
 export const ExecucaoTopo = styled.div`
   display: flex;
@@ -91,7 +94,7 @@ export const ExercicioEtapa = styled.div`
 `;
 
 export const NomeExercicio = styled.h2`
-  color: var(--white);
+  color: var(--accent);
   font-family: 'Cinzel', serif;
   font-size: 1.35rem;
   font-weight: 700;
@@ -100,10 +103,15 @@ export const NomeExercicio = styled.h2`
 `;
 
 export const SerieAtual = styled.div`
-  color: var(--white);
+  color: var(--accent);
   font-size: 1rem;
   font-weight: 650;
   margin: 0.85rem 0 0.35rem;
+
+  span {
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
 `;
 
 export const MetaExercicio = styled.p`
@@ -128,7 +136,7 @@ export const CampoBloco = styled.label`
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  color: var(--text-secondary);
+  color: var(--accent);
   font-size: 0.78rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -137,11 +145,13 @@ export const CampoBloco = styled.label`
 export const CampoGrande = styled.input`
   width: 100%;
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid ${(props) => (props.erro ? '#ff6b6b' : 'rgba(198, 169, 100, 0.35)')};
+  border: 1px solid ${(props) => (props.$erro ? '#ff6b6b' : 'rgba(198, 169, 100, 0.35)')};
   border-radius: 10px;
   color: var(--white);
   font-family: inherit;
   font-size: 1.15rem;
+  text-transform: none;
+  letter-spacing: normal;
   font-weight: 650;
   padding: 0.55rem 0.75rem;
   outline: none;
@@ -162,7 +172,7 @@ export const CampoGrande = styled.input`
   }
 `;
 
-export const BotaoConcluir = styled(motion.button)`
+export const BotaoConcluir = styled(motion.button).attrs({ transition: TOQUE })`
   width: 100%;
   margin-top: 1rem;
   background: var(--gold-gradient);
@@ -179,7 +189,7 @@ export const BotaoConcluir = styled(motion.button)`
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  transition: all 0.3s ease;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
   box-shadow: 0 8px 24px rgba(198, 169, 100, 0.3);
 
   &:hover:not(:disabled) {
@@ -197,6 +207,10 @@ export const ProximoDiscreto = styled.p`
   color: var(--text-secondary);
   font-size: 0.88rem;
   margin: 1rem 0 0;
+`;
+
+export const TextoClaro = styled.span`
+  color: var(--white);
 `;
 
 export const AcoesExecucao = styled.div`
@@ -226,7 +240,7 @@ export const ItemSerie = styled.li`
 
 `;
 
-export const BotaoTexto = styled(motion.button)`
+export const BotaoTexto = styled(motion.button).attrs({ transition: TOQUE })`
   background: none;
   border: none;
   color: var(--accent);
@@ -282,7 +296,7 @@ export const DescansoTitulo = styled.div`
   font-size: 0.95rem;
 `;
 
-export const BotaoPular = styled(motion.button)`
+export const BotaoPular = styled(motion.button).attrs({ transition: TOQUE })`
   margin-top: 0.4rem;
   background: transparent;
   border: 1px solid var(--accent);
@@ -293,7 +307,7 @@ export const BotaoPular = styled(motion.button)`
   padding: 0.7rem 1.2rem;
   border-radius: 8px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 
   &:hover:not(:disabled) {
     background: var(--accent);
@@ -306,7 +320,7 @@ export const BotaoPular = styled(motion.button)`
   }
 `;
 
-export const BotaoAcao = styled(motion.button)`
+export const BotaoAcao = styled(motion.button).attrs({ transition: TOQUE })`
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -319,7 +333,7 @@ export const BotaoAcao = styled(motion.button)`
   padding: 0.45rem 0.85rem;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 
   &:hover:not(:disabled) {
     background: var(--accent);
@@ -329,6 +343,11 @@ export const BotaoAcao = styled(motion.button)`
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 `;
 
@@ -347,6 +366,10 @@ export const ResumoLinha = styled.div`
   font-size: 0.95rem;
   padding-bottom: 0.45rem;
   border-bottom: 1px solid rgba(198, 169, 100, 0.12);
+
+  span {
+    color: var(--accent);
+  }
 
   strong {
     color: var(--white);
